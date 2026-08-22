@@ -289,6 +289,9 @@ class BlinkNonCustodialWallet(Wallet):
                         prefer_spark=False,
                         completion_timeout_secs=settings.blink_noncustodial_payment_timeout_secs,
                     ),
+                    # deterministic idempotency: retries of the same invoice
+                    # cannot double-spend
+                    idempotency_key=f"lnbits-{checking_id}",
                 )
             )
         except Exception as exc:
@@ -551,24 +554,29 @@ class BlinkNonCustodialWallet(Wallet):
 
     @staticmethod
     def _extract_lightning_fee(prepare_response: Any) -> int | None:
-        method = getattr(prepare_response, "payment_method", None)
-        fee_sats = getattr(method, "fee_sats", None)
-        return int(fee_sats) if fee_sats is not None else None
+        # SendPaymentMethod.BOLT11_INVOICE carries lightning_fee_sats
+        fee_sats = getattr(prepare_response, "payment_method", None)
+        return getattr(fee_sats, "lightning_fee_sats", None)
 
     @staticmethod
     def _extract_preimage(payment: Any) -> str | None:
         details = getattr(payment, "details", None)
-        preimage = getattr(details, "preimage", None)
+        htlc = getattr(details, "htlc_details", None)
+        preimage = getattr(htlc, "preimage", None)
         if preimage is None:
             preimage = getattr(payment, "preimage", None)
         return str(preimage) if preimage else None
 
     @staticmethod
     def _extract_fee_msat(payment: Any) -> int | None:
-        fees_sat = getattr(payment, "fees_sat", None)
-        if fees_sat is None:
-            fees_sat = getattr(payment, "fees_paid_sat", None)
-        return int(fees_sat) * 1000 if fees_sat is not None else None
+        fees = getattr(payment, "fees", None)
+        if fees is None:
+            fees_sat = getattr(payment, "fees_sat", None)
+            return int(fees_sat) * 1000 if fees_sat is not None else None
+        try:
+            return int(fees)
+        except (TypeError, ValueError):
+            return None
 
     @staticmethod
     def _map_sdk_status(status: Any) -> bool | None:
@@ -608,7 +616,8 @@ class BlinkNonCustodialWallet(Wallet):
             connect_request = breez_sdk_spark.ConnectRequest(
                 config=config,
                 seed=breez_sdk_spark.Seed.MNEMONIC(
-                    breez_sdk_spark.Mnemonic(mnemonic=mnemonic)
+                    mnemonic=mnemonic,
+                    passphrase=None,
                 ),
                 storage_dir=storage_dir.as_posix(),
             )
@@ -650,8 +659,8 @@ class BlinkNonCustodialWallet(Wallet):
     @staticmethod
     def _extract_htlc_hash(payment: Any) -> str | None:
         details = getattr(payment, "details", None)
-        method = getattr(details, "method", None)
-        htlc_hash = getattr(method, "htlc_payment_hash", None)
+        htlc = getattr(details, "htlc_details", None)
+        htlc_hash = getattr(htlc, "payment_hash", None)
         if htlc_hash is None:
             return None
         htlc_hash = str(htlc_hash)
