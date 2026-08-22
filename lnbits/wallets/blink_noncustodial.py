@@ -18,6 +18,7 @@ import asyncio
 import hashlib
 import random
 import time
+import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 from importlib.util import find_spec
@@ -291,9 +292,12 @@ class BlinkNonCustodialWallet(Wallet):
                         prefer_spark=False,
                         completion_timeout_secs=settings.blink_noncustodial_payment_timeout_secs,
                     ),
-                    # deterministic idempotency: retries of the same invoice
-                    # cannot double-spend
-                    idempotency_key=f"lnbits-{checking_id}",
+                    # deterministic idempotency: the SDK requires a valid UUID,
+                    # derived from the payment hash so retries of the same
+                    # invoice cannot double-spend
+                    idempotency_key=str(
+                        uuid.UUID(bytes=bytes.fromhex(checking_id)[:16])
+                    ),
                 )
             )
         except Exception as exc:
