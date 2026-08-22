@@ -322,7 +322,8 @@ class BlinkNonCustodialWallet(Wallet):
             return InvoiceResponse(ok=False, error_message=error_message)
 
         # the whole point of D1: the invoice must commit to OUR hash
-        invoice_desc_hash = decoded.tags.get(TagChar.description_hash)
+        desc_tag = decoded.tags.get(TagChar.description_hash)
+        invoice_desc_hash = getattr(desc_tag, "data", None)
         if invoice_desc_hash != desc_hash_hex:
             return InvoiceResponse(
                 ok=False,
