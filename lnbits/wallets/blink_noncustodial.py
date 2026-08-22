@@ -286,7 +286,8 @@ class BlinkNonCustodialWallet(Wallet):
                 breez_sdk_spark.SendPaymentRequest(
                     prepare_response=prepare_response,
                     options=breez_sdk_spark.SendPaymentOptions.BOLT11_INVOICE(
-                        prefer_spark=False, completion_timeout_secs=30
+                        prefer_spark=False,
+                        completion_timeout_secs=settings.blink_noncustodial_payment_timeout_secs,
                     ),
                 )
             )

@@ -48,6 +48,14 @@ window.app.component('lnbits-admin-funding-seed-backup', {
           ? this.settings.spark_l2_mnemonic_backup_confirmed
           : false
       this.openIfRequired()
+    },
+    'formData.blink_noncustodial_spark_mnemonic'() {
+      this.formData.blink_noncustodial_mnemonic_backup_confirmed =
+        this.formData.blink_noncustodial_spark_mnemonic ===
+        this.settings.blink_noncustodial_spark_mnemonic
+          ? this.settings.blink_noncustodial_mnemonic_backup_confirmed
+          : false
+      this.openIfRequired()
     }
   },
   computed: {
@@ -79,6 +87,12 @@ window.app.component('lnbits-admin-funding-seed-backup', {
         return {
           seedField: 'spark_l2_mnemonic',
           confirmField: 'spark_l2_mnemonic_backup_confirmed'
+        }
+      }
+      if (walletClass === 'BlinkNonCustodialWallet') {
+        return {
+          seedField: 'blink_noncustodial_spark_mnemonic',
+          confirmField: 'blink_noncustodial_mnemonic_backup_confirmed'
         }
       }
     },
