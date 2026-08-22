@@ -1136,6 +1136,7 @@ class SuperUserSettings(LNbitsSettings):
             "AlbyWallet",
             "BoltzWallet",
             "BlinkWallet",
+            "BlinkNonCustodialWallet",
             "BreezSdkWallet",
             "BreezLiquidSdkWallet",
             "CLNRestWallet",
