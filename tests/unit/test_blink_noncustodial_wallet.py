@@ -12,7 +12,8 @@ from lnbits.wallets.blink_noncustodial import (
 )
 
 
-def make_wallet(monkeypatch, **overrides):
+def make_wallet(monkeypatch, tmp_path, **overrides):
+    monkeypatch.setattr(settings, "lnbits_data_folder", str(tmp_path))
     monkeypatch.setattr(
         settings, "blink_noncustodial_ln_address", overrides.pop("ln_address", "hanzy")
     )
@@ -98,51 +99,51 @@ def make_preimage_pair():
 # --- configuration / initialization ---
 
 
-def test_normalize_ln_address_bare_username(monkeypatch):
-    wallet = make_wallet(monkeypatch, ln_address="hanzy")
+def test_normalize_ln_address_bare_username(monkeypatch, tmp_path):
+    wallet = make_wallet(monkeypatch, tmp_path, ln_address="hanzy")
     assert wallet.ln_address == "hanzy@blink.sv"
     assert wallet.username == "hanzy"
     assert wallet.domain == "blink.sv"
     assert wallet.endpoint == "https://blink.sv"
 
 
-def test_normalize_ln_address_full_address(monkeypatch):
-    wallet = make_wallet(monkeypatch, ln_address="Hanzy@Blink.SV")
+def test_normalize_ln_address_full_address(monkeypatch, tmp_path):
+    wallet = make_wallet(monkeypatch, tmp_path, ln_address="Hanzy@Blink.SV")
     assert wallet.ln_address == "hanzy@blink.sv"
 
 
-def test_invalid_ln_address_rejected(monkeypatch):
+def test_invalid_ln_address_rejected(monkeypatch, tmp_path):
     with pytest.raises(ValueError):
-        make_wallet(monkeypatch, ln_address="@bad")
+        make_wallet(monkeypatch, tmp_path, ln_address="@bad")
 
 
-def test_missing_ln_address_rejected(monkeypatch):
+def test_missing_ln_address_rejected(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "blink_noncustodial_ln_address", None)
     with pytest.raises(ValueError):
         BlinkNonCustodialWallet()
 
 
-def test_receive_only_mode_rejects_watchdog_voidwallet_switch(monkeypatch):
+def test_receive_only_mode_rejects_watchdog_voidwallet_switch(monkeypatch, tmp_path):
     with pytest.raises(ValueError) as excinfo:
-        make_wallet(monkeypatch, watchdog=True)
+        make_wallet(monkeypatch, tmp_path, watchdog=True)
     assert "watchdog" in str(excinfo.value)
 
 
-def test_seed_requires_backup_confirmation(monkeypatch):
+def test_seed_requires_backup_confirmation(monkeypatch, tmp_path):
     monkeypatch.setattr("lnbits.wallets.blink_noncustodial.HAS_BREEZ_SPARK_SDK", True)
     with pytest.raises(ValueError) as excinfo:
-        make_wallet(monkeypatch, seed="word " * 12)
+        make_wallet(monkeypatch, tmp_path, seed="word " * 12)
     assert "backup" in str(excinfo.value)
 
 
-def test_seed_without_sdk_package_rejected(monkeypatch):
+def test_seed_without_sdk_package_rejected(monkeypatch, tmp_path):
     # breez-sdk-spark is not installed in the unit-test environment
     from lnbits.wallets.blink_noncustodial import HAS_BREEZ_SPARK_SDK
 
     if HAS_BREEZ_SPARK_SDK:
         pytest.skip("breez-sdk-spark is installed")
     with pytest.raises(ValueError) as excinfo:
-        make_wallet(monkeypatch, seed="word " * 12, backup=True)
+        make_wallet(monkeypatch, tmp_path, seed="word " * 12, backup=True)
     assert "breez-sdk-spark" in str(excinfo.value)
 
 
@@ -150,16 +151,18 @@ def test_seed_without_sdk_package_rejected(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_description_hash_fails_fast_in_address_only_mode(monkeypatch):
-    wallet = make_wallet(monkeypatch)
+async def test_description_hash_fails_fast_in_address_only_mode(monkeypatch, tmp_path):
+    wallet = make_wallet(monkeypatch, tmp_path)
     response = await wallet.create_invoice(1000, description_hash=b"\x01" * 32)
     assert response.ok is False
     assert "description-hash" in (response.error_message or "")
 
 
 @pytest.mark.anyio
-async def test_unhashed_description_fails_fast_in_address_only_mode(monkeypatch):
-    wallet = make_wallet(monkeypatch)
+async def test_unhashed_description_fails_fast_in_address_only_mode(
+    monkeypatch, tmp_path
+):
+    wallet = make_wallet(monkeypatch, tmp_path)
     response = await wallet.create_invoice(1000, unhashed_description=b"metadata")
     assert response.ok is False
 
@@ -168,8 +171,8 @@ async def test_unhashed_description_fails_fast_in_address_only_mode(monkeypatch)
 
 
 @pytest.mark.anyio
-async def test_create_invoice_success(monkeypatch, mocker):
-    wallet = make_wallet(monkeypatch)
+async def test_create_invoice_success(monkeypatch, mocker, tmp_path):
+    wallet = make_wallet(monkeypatch, tmp_path)
     decoded = fake_decoded()
     mocker.patch(
         "lnbits.wallets.blink_noncustodial.bolt11_lib.decode", return_value=decoded
@@ -193,8 +196,8 @@ async def test_create_invoice_success(monkeypatch, mocker):
 
 
 @pytest.mark.anyio
-async def test_create_invoice_amount_below_minimum(monkeypatch, mocker):
-    wallet = make_wallet(monkeypatch)
+async def test_create_invoice_amount_below_minimum(monkeypatch, mocker, tmp_path):
+    wallet = make_wallet(monkeypatch, tmp_path)
     mocker.patch.object(
         wallet.client,
         "get",
@@ -210,8 +213,8 @@ async def test_create_invoice_amount_below_minimum(monkeypatch, mocker):
 
 
 @pytest.mark.anyio
-async def test_create_invoice_amount_above_maximum(monkeypatch, mocker):
-    wallet = make_wallet(monkeypatch)
+async def test_create_invoice_amount_above_maximum(monkeypatch, mocker, tmp_path):
+    wallet = make_wallet(monkeypatch, tmp_path)
     mocker.patch.object(
         wallet.client,
         "get",
@@ -227,8 +230,8 @@ async def test_create_invoice_amount_above_maximum(monkeypatch, mocker):
 
 
 @pytest.mark.anyio
-async def test_create_invoice_rejects_http_callback(monkeypatch, mocker):
-    wallet = make_wallet(monkeypatch)
+async def test_create_invoice_rejects_http_callback(monkeypatch, mocker, tmp_path):
+    wallet = make_wallet(monkeypatch, tmp_path)
     metadata = pay_request_metadata()
     metadata["callback"] = "http://evil.example/callback"
 
@@ -242,8 +245,10 @@ async def test_create_invoice_rejects_http_callback(monkeypatch, mocker):
 
 
 @pytest.mark.anyio
-async def test_create_invoice_rejects_foreign_callback_host(monkeypatch, mocker):
-    wallet = make_wallet(monkeypatch)
+async def test_create_invoice_rejects_foreign_callback_host(
+    monkeypatch, mocker, tmp_path
+):
+    wallet = make_wallet(monkeypatch, tmp_path)
     metadata = pay_request_metadata()
     metadata["callback"] = "https://evil.example/callback"
 
@@ -257,9 +262,9 @@ async def test_create_invoice_rejects_foreign_callback_host(monkeypatch, mocker)
 
 
 @pytest.mark.anyio
-async def test_create_invoice_accepts_subdomain_callback(monkeypatch, mocker):
+async def test_create_invoice_accepts_subdomain_callback(monkeypatch, mocker, tmp_path):
     """blink.sv serves callbacks from lnurl.blink.sv - must be allowed"""
-    wallet = make_wallet(monkeypatch)
+    wallet = make_wallet(monkeypatch, tmp_path)
     decoded = fake_decoded()
     mocker.patch(
         "lnbits.wallets.blink_noncustodial.bolt11_lib.decode", return_value=decoded
@@ -280,8 +285,8 @@ async def test_create_invoice_accepts_subdomain_callback(monkeypatch, mocker):
 
 
 @pytest.mark.anyio
-async def test_create_invoice_rejects_lookalike_host(monkeypatch, mocker):
-    wallet = make_wallet(monkeypatch)
+async def test_create_invoice_rejects_lookalike_host(monkeypatch, mocker, tmp_path):
+    wallet = make_wallet(monkeypatch, tmp_path)
     metadata = pay_request_metadata()
     metadata["callback"] = "https://evilblink.sv/callback"
 
@@ -295,8 +300,8 @@ async def test_create_invoice_rejects_lookalike_host(monkeypatch, mocker):
 
 
 @pytest.mark.anyio
-async def test_create_invoice_rejects_wrong_tag(monkeypatch, mocker):
-    wallet = make_wallet(monkeypatch)
+async def test_create_invoice_rejects_wrong_tag(monkeypatch, mocker, tmp_path):
+    wallet = make_wallet(monkeypatch, tmp_path)
 
     async def fake_get(url, params=None):
         return mock_http_response({"tag": "withdrawRequest"})
@@ -307,8 +312,8 @@ async def test_create_invoice_rejects_wrong_tag(monkeypatch, mocker):
 
 
 @pytest.mark.anyio
-async def test_create_invoice_rejects_missing_verify_url(monkeypatch, mocker):
-    wallet = make_wallet(monkeypatch)
+async def test_create_invoice_rejects_missing_verify_url(monkeypatch, mocker, tmp_path):
+    wallet = make_wallet(monkeypatch, tmp_path)
     decoded = fake_decoded()
     mocker.patch(
         "lnbits.wallets.blink_noncustodial.bolt11_lib.decode", return_value=decoded
@@ -326,8 +331,10 @@ async def test_create_invoice_rejects_missing_verify_url(monkeypatch, mocker):
 
 
 @pytest.mark.anyio
-async def test_create_invoice_rejects_non_mainnet_invoice(monkeypatch, mocker):
-    wallet = make_wallet(monkeypatch)
+async def test_create_invoice_rejects_non_mainnet_invoice(
+    monkeypatch, mocker, tmp_path
+):
+    wallet = make_wallet(monkeypatch, tmp_path)
     decoded = fake_decoded(currency="tb")
     mocker.patch(
         "lnbits.wallets.blink_noncustodial.bolt11_lib.decode", return_value=decoded
@@ -335,7 +342,9 @@ async def test_create_invoice_rejects_non_mainnet_invoice(monkeypatch, mocker):
 
     def route(url, params=None):
         if "invoice" in url:
-            return mock_http_response({"pr": "lntb...", "verify": "https://x/v"})
+            return mock_http_response(
+                {"pr": "lntb...", "verify": "https://blink.sv/v/a"}
+            )
         return mock_http_response(pay_request_metadata())
 
     mocker.patch.object(wallet.client, "get", side_effect=route)
@@ -345,8 +354,8 @@ async def test_create_invoice_rejects_non_mainnet_invoice(monkeypatch, mocker):
 
 
 @pytest.mark.anyio
-async def test_create_invoice_rejects_amount_mismatch(monkeypatch, mocker):
-    wallet = make_wallet(monkeypatch)
+async def test_create_invoice_rejects_amount_mismatch(monkeypatch, mocker, tmp_path):
+    wallet = make_wallet(monkeypatch, tmp_path)
     decoded = fake_decoded(amount_msat=999)
     mocker.patch(
         "lnbits.wallets.blink_noncustodial.bolt11_lib.decode", return_value=decoded
@@ -354,7 +363,9 @@ async def test_create_invoice_rejects_amount_mismatch(monkeypatch, mocker):
 
     def route(url, params=None):
         if "invoice" in url:
-            return mock_http_response({"pr": "lnbc...", "verify": "https://x/v"})
+            return mock_http_response(
+                {"pr": "lnbc...", "verify": "https://blink.sv/v/a"}
+            )
         return mock_http_response(pay_request_metadata())
 
     mocker.patch.object(wallet.client, "get", side_effect=route)
@@ -367,8 +378,8 @@ async def test_create_invoice_rejects_amount_mismatch(monkeypatch, mocker):
 
 
 @pytest.mark.anyio
-async def test_invoice_paid_with_valid_preimage(monkeypatch, mocker):
-    wallet = make_wallet(monkeypatch)
+async def test_invoice_paid_with_valid_preimage(monkeypatch, mocker, tmp_path):
+    wallet = make_wallet(monkeypatch, tmp_path)
     checking_id, preimage = make_preimage_pair()
     wallet._verify_urls[checking_id] = "https://blink.sv/v/a"
 
@@ -382,8 +393,10 @@ async def test_invoice_paid_with_valid_preimage(monkeypatch, mocker):
 
 
 @pytest.mark.anyio
-async def test_invoice_with_invalid_preimage_stays_pending(monkeypatch, mocker):
-    wallet = make_wallet(monkeypatch)
+async def test_invoice_with_invalid_preimage_stays_pending(
+    monkeypatch, mocker, tmp_path
+):
+    wallet = make_wallet(monkeypatch, tmp_path)
     checking_id = "c" * 64
     wallet._verify_urls[checking_id] = "https://blink.sv/v/a"
 
@@ -396,8 +409,8 @@ async def test_invoice_with_invalid_preimage_stays_pending(monkeypatch, mocker):
 
 
 @pytest.mark.anyio
-async def test_unsettled_invoice_stays_pending(monkeypatch, mocker):
-    wallet = make_wallet(monkeypatch)
+async def test_unsettled_invoice_stays_pending(monkeypatch, mocker, tmp_path):
+    wallet = make_wallet(monkeypatch, tmp_path)
     checking_id = "d" * 64
     wallet._verify_urls[checking_id] = "https://blink.sv/v/a"
 
@@ -412,8 +425,8 @@ async def test_unsettled_invoice_stays_pending(monkeypatch, mocker):
 
 
 @pytest.mark.anyio
-async def test_transport_error_stays_pending(monkeypatch, mocker):
-    wallet = make_wallet(monkeypatch)
+async def test_transport_error_stays_pending(monkeypatch, mocker, tmp_path):
+    wallet = make_wallet(monkeypatch, tmp_path)
     checking_id = "e" * 64
     wallet._verify_urls[checking_id] = "https://blink.sv/v/a"
     wallet._invoice_meta[checking_id] = _InvoiceMeta()
@@ -430,8 +443,8 @@ async def test_transport_error_stays_pending(monkeypatch, mocker):
 
 
 @pytest.mark.anyio
-async def test_repeated_error_responses_evict(monkeypatch, mocker):
-    wallet = make_wallet(monkeypatch)
+async def test_repeated_error_responses_evict(monkeypatch, mocker, tmp_path):
+    wallet = make_wallet(monkeypatch, tmp_path)
     checking_id = "f" * 64
     wallet._verify_urls[checking_id] = "https://blink.sv/v/a"
     wallet._invoice_meta[checking_id] = _InvoiceMeta()
@@ -448,8 +461,8 @@ async def test_repeated_error_responses_evict(monkeypatch, mocker):
 
 
 @pytest.mark.anyio
-async def test_unknown_checking_id_is_pending(monkeypatch, mocker):
-    wallet = make_wallet(monkeypatch)
+async def test_unknown_checking_id_is_pending(monkeypatch, mocker, tmp_path):
+    wallet = make_wallet(monkeypatch, tmp_path)
     status = await wallet.get_invoice_status("9" * 64)
     assert status.paid is None
 
@@ -458,16 +471,20 @@ async def test_unknown_checking_id_is_pending(monkeypatch, mocker):
 
 
 @pytest.mark.anyio
-async def test_pay_invoice_unsupported_in_address_only_mode(monkeypatch, mocker):
-    wallet = make_wallet(monkeypatch)
+async def test_pay_invoice_unsupported_in_address_only_mode(
+    monkeypatch, mocker, tmp_path
+):
+    wallet = make_wallet(monkeypatch, tmp_path)
     response = await wallet.pay_invoice("lnbc...", fee_limit_msat=1000)
     assert response.ok is False
     assert "not supported" in (response.error_message or "").lower()
 
 
 @pytest.mark.anyio
-async def test_payment_status_pending_in_address_only_mode(monkeypatch, mocker):
-    wallet = make_wallet(monkeypatch)
+async def test_payment_status_pending_in_address_only_mode(
+    monkeypatch, mocker, tmp_path
+):
+    wallet = make_wallet(monkeypatch, tmp_path)
     status = await wallet.get_payment_status("a" * 64)
     assert status.paid is None
 
@@ -504,3 +521,152 @@ def test_map_sdk_status():
     assert BlinkNonCustodialWallet._map_sdk_status("FAILED") is False
     assert BlinkNonCustodialWallet._map_sdk_status("PENDING") is None
     assert BlinkNonCustodialWallet._map_sdk_status(None) is None
+
+
+# --- verify URL validation ---
+
+
+@pytest.mark.anyio
+async def test_create_invoice_rejects_http_verify_url(monkeypatch, mocker, tmp_path):
+    wallet = make_wallet(monkeypatch, tmp_path)
+    decoded = fake_decoded()
+    mocker.patch(
+        "lnbits.wallets.blink_noncustodial.bolt11_lib.decode", return_value=decoded
+    )
+
+    def route(url, params=None):
+        if "invoice" in url:
+            return mock_http_response(
+                {"pr": "lnbc...", "verify": "http://blink.sv/v/a"}
+            )
+        return mock_http_response(pay_request_metadata())
+
+    mocker.patch.object(wallet.client, "get", side_effect=route)
+    response = await wallet.create_invoice(amount=100)
+    assert response.ok is False
+    assert "https" in (response.error_message or "")
+
+
+@pytest.mark.anyio
+async def test_create_invoice_rejects_foreign_verify_host(
+    monkeypatch, mocker, tmp_path
+):
+    wallet = make_wallet(monkeypatch, tmp_path)
+    decoded = fake_decoded()
+    mocker.patch(
+        "lnbits.wallets.blink_noncustodial.bolt11_lib.decode", return_value=decoded
+    )
+
+    def route(url, params=None):
+        if "invoice" in url:
+            return mock_http_response(
+                {"pr": "lnbc...", "verify": "https://evil.example/v/a"}
+            )
+        return mock_http_response(pay_request_metadata())
+
+    mocker.patch.object(wallet.client, "get", side_effect=route)
+    response = await wallet.create_invoice(amount=100)
+    assert response.ok is False
+    assert "not allowed" in (response.error_message or "")
+
+
+@pytest.mark.anyio
+async def test_create_invoice_rejects_lookalike_verify_host(
+    monkeypatch, mocker, tmp_path
+):
+    wallet = make_wallet(monkeypatch, tmp_path)
+    decoded = fake_decoded()
+    mocker.patch(
+        "lnbits.wallets.blink_noncustodial.bolt11_lib.decode", return_value=decoded
+    )
+
+    def route(url, params=None):
+        if "invoice" in url:
+            return mock_http_response(
+                {"pr": "lnbc...", "verify": "https://blink.sv.evil.example/v/a"}
+            )
+        return mock_http_response(pay_request_metadata())
+
+    mocker.patch.object(wallet.client, "get", side_effect=route)
+    response = await wallet.create_invoice(amount=100)
+    assert response.ok is False
+    assert "not allowed" in (response.error_message or "")
+
+
+# --- pending-invoice persistence ---
+
+
+async def _create_one_invoice(wallet, mocker, payment_hash):
+    decoded = fake_decoded(payment_hash=payment_hash)
+    mocker.patch(
+        "lnbits.wallets.blink_noncustodial.bolt11_lib.decode", return_value=decoded
+    )
+
+    def route(url, params=None):
+        if "invoice" in url:
+            return mock_http_response(
+                {"pr": "lnbc...", "verify": "https://blink.sv/v/a"}
+            )
+        return mock_http_response(pay_request_metadata())
+
+    mocker.patch.object(wallet.client, "get", side_effect=route)
+    return await wallet.create_invoice(amount=100)
+
+
+@pytest.mark.anyio
+async def test_pending_invoices_survive_restart(monkeypatch, mocker, tmp_path):
+    wallet = make_wallet(monkeypatch, tmp_path)
+    payment_hash = "b" * 64
+    response = await _create_one_invoice(wallet, mocker, payment_hash)
+    assert response.ok is True
+    assert (tmp_path / "blink-noncustodial-pending.json").exists()
+
+    # a fresh instance (post-restart) reloads the pending invoice
+    reloaded = make_wallet(monkeypatch, tmp_path)
+    assert payment_hash in reloaded.pending_invoices
+    assert reloaded._verify_urls[payment_hash] == "https://blink.sv/v/a"
+    assert reloaded._invoice_meta[payment_hash].expires_at > 0
+
+
+@pytest.mark.anyio
+async def test_evicted_invoice_is_not_reloaded(monkeypatch, mocker, tmp_path):
+    wallet = make_wallet(monkeypatch, tmp_path)
+    payment_hash = "c" * 64
+    response = await _create_one_invoice(wallet, mocker, payment_hash)
+    assert response.ok is True
+    wallet._evict_invoice(payment_hash, reason="paid")
+
+    reloaded = make_wallet(monkeypatch, tmp_path)
+    assert payment_hash not in reloaded.pending_invoices
+    assert payment_hash not in reloaded._verify_urls
+
+
+@pytest.mark.anyio
+async def test_expired_invoice_is_not_reloaded(monkeypatch, mocker, tmp_path):
+    wallet = make_wallet(monkeypatch, tmp_path)
+    payment_hash = "d" * 64
+    response = await _create_one_invoice(wallet, mocker, payment_hash)
+    assert response.ok is True
+    # age the entry past expiry + grace, then reload
+    meta = wallet._invoice_meta[payment_hash]
+    meta.expires_at = time.time() - 10_000
+    wallet._persist_pending()
+
+    reloaded = make_wallet(monkeypatch, tmp_path)
+    assert payment_hash not in reloaded.pending_invoices
+
+
+def test_corrupt_pending_store_is_tolerated(monkeypatch, tmp_path):
+    (tmp_path / "blink-noncustodial-pending.json").write_text("{not json")
+    wallet = make_wallet(monkeypatch, tmp_path)
+    assert wallet.pending_invoices == []
+
+
+@pytest.mark.anyio
+async def test_duplicate_payment_hash_registered_once(monkeypatch, mocker, tmp_path):
+    wallet = make_wallet(monkeypatch, tmp_path)
+    payment_hash = "e" * 64
+    for _ in range(2):
+        response = await _create_one_invoice(wallet, mocker, payment_hash)
+        assert response.ok is True
+    assert wallet.pending_invoices.count(payment_hash) == 1

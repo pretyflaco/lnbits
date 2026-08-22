@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import random
 import time
 import uuid
@@ -85,6 +86,11 @@ class BlinkNonCustodialWallet(Wallet):
         self.endpoint = (
             settings.blink_noncustodial_lnurl_endpoint or f"https://{self.domain}"
         ).rstrip("/")
+        # hosts the wallet is willing to GET for callbacks and LUD-21 verify
+        self._allowed_hosts = {
+            self.domain.lower(),
+            (urlparse(self.endpoint).hostname or "").lower(),
+        } - {""}
 
         self._has_seed = bool(settings.blink_noncustodial_spark_mnemonic)
         self._grant_key = None
@@ -146,10 +152,74 @@ class BlinkNonCustodialWallet(Wallet):
         self.pending_invoices: list[str] = []
         self._verify_urls: dict[str, str] = {}
         self._invoice_meta: dict[str, _InvoiceMeta] = {}
+        self._load_pending()
 
         self._sdk: Any = None
         self._sdk_lock = asyncio.Lock()
         self._sdk_payment_ids: dict[str, str] = {}  # payment_hash -> sdk payment id
+
+    # --- pending-invoice persistence (survives restarts) ---
+    # Verify URLs cannot be guessed, so without persistence an invoice that
+    # is paid while LNbits is down would stay pending forever even though the
+    # funds arrived.
+
+    @property
+    def _pending_store_path(self) -> Path:
+        return Path(settings.lnbits_data_folder, "blink-noncustodial-pending.json")
+
+    def _load_pending(self) -> None:
+        try:
+            raw = self._pending_store_path.read_text()
+        except (FileNotFoundError, OSError):
+            return
+        try:
+            stored = json.loads(raw)
+            now = time.time()
+            for payment_hash, entry in stored.items():
+                expires_at = float(entry.get("expires_at", 0))
+                if expires_at and now > expires_at + EXPIRY_GRACE_SECS:
+                    continue  # long gone; the poller would evict anyway
+                verify_url = entry.get("verify")
+                if not isinstance(verify_url, str) or not verify_url:
+                    continue
+                self._verify_urls[payment_hash] = verify_url
+                self._invoice_meta[payment_hash] = _InvoiceMeta(
+                    created_at=float(entry.get("created_at", now)),
+                    expires_at=expires_at,
+                )
+                self.pending_invoices.append(payment_hash)
+        except Exception as exc:
+            # never let a corrupt state file take down the funding source
+            logger.warning(f"ignoring corrupt pending-invoice store: {exc}")
+            self._verify_urls.clear()
+            self._invoice_meta.clear()
+            self.pending_invoices.clear()
+
+    def _persist_pending(self) -> None:
+        try:
+            data = {
+                h: {
+                    "verify": self._verify_urls[h],
+                    "expires_at": self._invoice_meta[h].expires_at,
+                    "created_at": self._invoice_meta[h].created_at,
+                }
+                for h in self.pending_invoices
+                if h in self._verify_urls and h in self._invoice_meta
+            }
+            tmp = self._pending_store_path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(data))
+            tmp.replace(self._pending_store_path)
+        except OSError as exc:
+            logger.warning(f"could not persist pending invoices: {exc}")
+
+    def _register_pending(
+        self, payment_hash: str, verify_url: str, expires_at: float
+    ) -> None:
+        self._verify_urls[payment_hash] = verify_url
+        self._invoice_meta[payment_hash] = _InvoiceMeta(expires_at=expires_at)
+        if payment_hash not in self.pending_invoices:
+            self.pending_invoices.append(payment_hash)
+        self._persist_pending()
 
     async def cleanup(self):
         try:
@@ -211,8 +281,9 @@ class BlinkNonCustodialWallet(Wallet):
 
             params: dict[str, str | int] = {"amount": amount_msat}
             if kwargs.get("expiry"):
-                # supported by blink-lnurl-server but not part of LUD-06,
-                # so the returned invoice expiry is validated below regardless
+                # supported by blink-lnurl-server but not part of LUD-06;
+                # the server is free to round or clamp it, so polling uses
+                # the expiry decoded from the returned invoice instead
                 params["expiry"] = int(kwargs["expiry"])
             if memo:
                 params["comment"] = memo
@@ -228,8 +299,16 @@ class BlinkNonCustodialWallet(Wallet):
         if error_message:
             return InvoiceResponse(ok=False, error_message=error_message)
 
-        payment_request: str = data["pr"]
+        return self._finalize_invoice(data["pr"], data["verify"], amount_msat)
 
+    def _finalize_invoice(
+        self,
+        payment_request: str,
+        verify_url: str,
+        amount_msat: int,
+        expected_desc_hash: str | None = None,
+    ) -> InvoiceResponse:
+        """Validate a minted invoice and register it for settlement polling."""
         try:
             decoded = bolt11_lib.decode(payment_request)
         except Exception as exc:
@@ -241,6 +320,19 @@ class BlinkNonCustodialWallet(Wallet):
         if error_message:
             return InvoiceResponse(ok=False, error_message=error_message)
 
+        if expected_desc_hash is not None:
+            # the whole point of D1: the invoice must commit to OUR hash
+            desc_tag = decoded.tags.get(TagChar.description_hash)
+            invoice_desc_hash = getattr(desc_tag, "data", None)
+            if invoice_desc_hash != expected_desc_hash:
+                return InvoiceResponse(
+                    ok=False,
+                    error_message=(
+                        "server returned invoice with wrong description hash "
+                        f"({invoice_desc_hash})"
+                    ),
+                )
+
         payment_hash: str | None = decoded.payment_hash
         expiry_secs = getattr(decoded, "expiry", None)
         if not expiry_secs or expiry_secs <= 0:
@@ -249,9 +341,7 @@ class BlinkNonCustodialWallet(Wallet):
         expires_at = float(issued_at) + float(expiry_secs)
 
         assert payment_hash is not None
-        self._verify_urls[payment_hash] = data["verify"]
-        self._invoice_meta[payment_hash] = _InvoiceMeta(expires_at=expires_at)
-        self.pending_invoices.append(payment_hash)
+        self._register_pending(payment_hash, verify_url, expires_at)
 
         return InvoiceResponse(
             ok=True, checking_id=payment_hash, payment_request=payment_request
@@ -268,78 +358,20 @@ class BlinkNonCustodialWallet(Wallet):
         description hash. Signing authority comes from either a delegated
         receive grant key (preferred, no spend authority) or the Spark seed
         via the Breez SDK."""
-        signature: str
-        pubkey: str
-
-        if self._grant_key is not None:
-            # D2: plain ECDSA with the delegated grant key — no SDK needed
-            ts = int(time.time())
-            request_id = uuid.uuid4().hex
-            desc_hash_hex = (
-                description_hash.hex()
-                if description_hash
-                else hashlib.sha256(unhashed_description).hexdigest()  # type: ignore[arg-type]
-            )
-            amount_msat = int(amount) * 1000
-            expiry_secs = int(kwargs.get("expiry") or 3600)
-            canonical = (
-                f"lnurl-invoice-v1:{self.domain}:{self.username}:{amount_msat}:"
-                f"{desc_hash_hex}:{expiry_secs}:{request_id}"
-            )
-            digest = hashlib.sha256(f"{canonical}-{ts}".encode()).digest()
-            signature = self._grant_key.sign(digest, hasher=None).hex()
-            pubkey = self._grant_pubkey or ""
-        else:
-            try:
-                import breez_sdk_spark  # type: ignore[reportMissingImports]
-            except ImportError:
-                return InvoiceResponse(
-                    ok=False,
-                    error_message=(
-                        "breez-sdk-spark is not installed. "
-                        "Ask admin to run `uv sync --extra blink-spark`."
-                    ),
-                )
-            try:
-                sdk = await self._ensure_sdk()
-                ts = int(time.time())
-                request_id = uuid.uuid4().hex
-                desc_hash_hex = (
-                    description_hash.hex()
-                    if description_hash
-                    else hashlib.sha256(unhashed_description).hexdigest()  # type: ignore[arg-type]
-                )
-                amount_msat = int(amount) * 1000
-                expiry_secs = int(kwargs.get("expiry") or 3600)
-                canonical = (
-                    f"lnurl-invoice-v1:{self.domain}:{self.username}:{amount_msat}:"
-                    f"{desc_hash_hex}:{expiry_secs}:{request_id}"
-                )
-                signed = await sdk.sign_message(
-                    breez_sdk_spark.SignMessageRequest(
-                        message=f"{canonical}-{ts}", compact=False
-                    )
-                )
-                signature = signed.signature
-                pubkey = signed.pubkey
-            except Exception as exc:
-                logger.warning(exc)
-                return InvoiceResponse(
-                    ok=False, error_message=f"signed invoice error: {exc}"
-                )
+        signed = await self._build_signed_invoice_request(
+            amount=amount,
+            description_hash=description_hash,
+            unhashed_description=unhashed_description,
+            expiry=int(kwargs.get("expiry") or 3600),
+        )
+        if isinstance(signed, InvoiceResponse):
+            return signed  # signing failed, error already wrapped
+        body, desc_hash_hex, amount_msat = signed
 
         try:
             response = await self.client.post(
                 f"{self.endpoint}/lnurlp/{self.username}/invoice/signed",
-                json={
-                    "amount_msat": amount_msat,
-                    "description_hash": desc_hash_hex,
-                    "expiry_secs": expiry_secs,
-                    "request_id": request_id,
-                    "pubkey": pubkey,
-                    "timestamp": ts,
-                    "signature": signature,
-                },
+                json=body,
             )
             response.raise_for_status()
             data = response.json()
@@ -353,44 +385,76 @@ class BlinkNonCustodialWallet(Wallet):
         if error_message:
             return InvoiceResponse(ok=False, error_message=error_message)
 
-        payment_request: str = data["pr"]
-
-        try:
-            decoded = bolt11_lib.decode(payment_request)
-        except Exception as exc:
-            return InvoiceResponse(
-                ok=False, error_message=f"Invalid invoice from callback: {exc}"
-            )
-
-        error_message = self._validate_callback_invoice(decoded, amount_msat)
-        if error_message:
-            return InvoiceResponse(ok=False, error_message=error_message)
-
-        # the whole point of D1: the invoice must commit to OUR hash
-        desc_tag = decoded.tags.get(TagChar.description_hash)
-        invoice_desc_hash = getattr(desc_tag, "data", None)
-        if invoice_desc_hash != desc_hash_hex:
-            return InvoiceResponse(
-                ok=False,
-                error_message=(
-                    "server returned invoice with wrong description hash "
-                    f"({invoice_desc_hash})"
-                ),
-            )
-
-        payment_hash: str | None = decoded.payment_hash
-        expiry_secs_decoded = getattr(decoded, "expiry", None) or 3600
-        issued_at = getattr(decoded, "date", None) or time.time()
-        expires_at = float(issued_at) + float(expiry_secs_decoded)
-
-        assert payment_hash is not None
-        self._verify_urls[payment_hash] = data["verify"]
-        self._invoice_meta[payment_hash] = _InvoiceMeta(expires_at=expires_at)
-        self.pending_invoices.append(payment_hash)
-
-        return InvoiceResponse(
-            ok=True, checking_id=payment_hash, payment_request=payment_request
+        return self._finalize_invoice(
+            data["pr"], data["verify"], amount_msat, expected_desc_hash=desc_hash_hex
         )
+
+    async def _build_signed_invoice_request(
+        self,
+        amount: int,
+        description_hash: bytes | None,
+        unhashed_description: bytes | None,
+        expiry: int,
+    ) -> tuple[dict, str, int] | InvoiceResponse:
+        """Builds the signed D1/D2 request body. Returns (body, desc_hash_hex,
+        amount_msat) or an error InvoiceResponse."""
+        ts = int(time.time())
+        request_id = uuid.uuid4().hex
+        desc_hash_hex = (
+            description_hash.hex()
+            if description_hash
+            else hashlib.sha256(unhashed_description or b"").hexdigest()
+        )
+        amount_msat = int(amount) * 1000
+        # one canonical builder for both signing paths: the server verifies
+        # this exact byte string, drift between paths would break auth
+        canonical = (
+            f"lnurl-invoice-v1:{self.domain}:{self.username}:{amount_msat}:"
+            f"{desc_hash_hex}:{expiry}:{request_id}"
+        )
+
+        if self._grant_key is not None:
+            # D2: plain ECDSA with the delegated grant key — no SDK needed
+            digest = hashlib.sha256(f"{canonical}-{ts}".encode()).digest()
+            signature = self._grant_key.sign(digest, hasher=None).hex()
+            assert self._grant_pubkey is not None
+            pubkey = self._grant_pubkey
+        else:
+            try:
+                import breez_sdk_spark  # type: ignore[reportMissingImports]
+            except ImportError:
+                return InvoiceResponse(
+                    ok=False,
+                    error_message=(
+                        "breez-sdk-spark is not installed. "
+                        "Ask admin to run `uv sync --extra blink-spark`."
+                    ),
+                )
+            try:
+                sdk = await self._ensure_sdk()
+                signed = await sdk.sign_message(
+                    breez_sdk_spark.SignMessageRequest(
+                        message=f"{canonical}-{ts}", compact=False
+                    )
+                )
+                signature = signed.signature
+                pubkey = signed.pubkey
+            except Exception as exc:
+                logger.warning(exc)
+                return InvoiceResponse(
+                    ok=False, error_message=f"signed invoice error: {exc}"
+                )
+
+        body = {
+            "amount_msat": amount_msat,
+            "description_hash": desc_hash_hex,
+            "expiry_secs": expiry,
+            "request_id": request_id,
+            "pubkey": pubkey,
+            "timestamp": ts,
+            "signature": signature,
+        }
+        return body, desc_hash_hex, amount_msat
 
     async def pay_invoice(self, bolt11: str, fee_limit_msat: int) -> PaymentResponse:
         if not self._has_seed:
@@ -573,6 +637,7 @@ class BlinkNonCustodialWallet(Wallet):
 
                 if meta.expires_at and now > meta.expires_at + EXPIRY_GRACE_SECS:
                     self._evict_invoice(checking_id, reason="expired")
+                    last_poll.pop(checking_id, None)
                     continue
 
                 interval = self._poll_interval(now, meta.created_at, meta.error_streak)
@@ -597,9 +662,11 @@ class BlinkNonCustodialWallet(Wallet):
                 if status.paid:
                     yield checking_id
                     self._evict_invoice(checking_id, reason="paid")
+                    last_poll.pop(checking_id, None)
                 elif status.failed:
                     logger.warning(f"invoice {checking_id} failed, evicting")
                     self._evict_invoice(checking_id, reason="failed")
+                    last_poll.pop(checking_id, None)
             await asyncio.sleep(max(0.5, next_wake - time.time()))
 
     async def _fetch_lnurlp_metadata(self) -> dict:
@@ -637,14 +704,28 @@ class BlinkNonCustodialWallet(Wallet):
             raise ValueError(f"callback host '{parsed.netloc}' is not allowed")
         return callback
 
-    @staticmethod
-    def _validate_callback_response(data: dict) -> str | None:
+    def _validate_callback_response(self, data: dict) -> str | None:
         if not data.get("pr"):
             return "LNURL-pay callback returned no invoice"
         verify_url = data.get("verify")
         if not verify_url or not isinstance(verify_url, str):
             return "LNURL-pay callback returned no LUD-21 verify URL"
-        return None
+        return self._validate_verify_url(verify_url)
+
+    def _validate_verify_url(self, verify_url: str) -> str | None:
+        # the verify URL drives settlement decisions, so it gets the same
+        # scrutiny as the callback URL: https only, and only hosts belonging
+        # to the address domain or the configured endpoint
+        parsed = urlparse(verify_url)
+        if parsed.scheme != "https":
+            return "LUD-21 verify URL must be https"
+        host = (parsed.hostname or "").lower()
+        if not host:
+            return "LUD-21 verify URL has no host"
+        for allowed in self._allowed_hosts:
+            if host == allowed or host.endswith(f".{allowed}"):
+                return None
+        return f"LUD-21 verify host '{host}' is not allowed"
 
     @staticmethod
     def _validate_callback_invoice(decoded: Any, amount_msat: int) -> str | None:
@@ -691,6 +772,7 @@ class BlinkNonCustodialWallet(Wallet):
             self.pending_invoices.remove(checking_id)
         self._verify_urls.pop(checking_id, None)
         self._invoice_meta.pop(checking_id, None)
+        self._persist_pending()
         logger.debug(f"evicted invoice {checking_id} ({reason})")
 
     @staticmethod
