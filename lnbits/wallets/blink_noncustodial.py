@@ -27,6 +27,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import httpx
+from bolt11 import TagChar
 from loguru import logger
 
 from lnbits import bolt11 as bolt11_lib
@@ -164,20 +165,27 @@ class BlinkNonCustodialWallet(Wallet):
         **kwargs,
     ) -> InvoiceResponse:
         if description_hash or unhashed_description:
-            hint = (
-                "configure a Spark seed (signed invoice support) to use "
-                "description-hash invoices"
-                if self._has_seed
-                else "address-only mode cannot commit custom metadata; "
-                "configure a Spark seed to enable LNURLp/zaps"
-            )
-            return InvoiceResponse(
-                ok=False,
-                error_message=(
-                    "Blink non-custodial wallet does not support "
-                    "description-hash invoices without signing authority: "
-                    f"{hint}"
-                ),
+            if not self._has_seed:
+                hint = (
+                    "configure a Spark seed (signed invoice support) to use "
+                    "description-hash invoices"
+                    if self._has_seed
+                    else "address-only mode cannot commit custom metadata; "
+                    "configure a Spark seed to enable LNURLp/zaps"
+                )
+                return InvoiceResponse(
+                    ok=False,
+                    error_message=(
+                        "Blink non-custodial wallet does not support "
+                        "description-hash invoices without signing authority: "
+                        f"{hint}"
+                    ),
+                )
+            return await self._create_signed_description_hash_invoice(
+                amount=amount,
+                description_hash=description_hash,
+                unhashed_description=unhashed_description,
+                **kwargs,
             )
 
         amount_msat = int(amount) * 1000
@@ -223,6 +231,111 @@ class BlinkNonCustodialWallet(Wallet):
             expiry_secs = 3600
         issued_at = getattr(decoded, "date", None) or time.time()
         expires_at = float(issued_at) + float(expiry_secs)
+
+        assert payment_hash is not None
+        self._verify_urls[payment_hash] = data["verify"]
+        self._invoice_meta[payment_hash] = _InvoiceMeta(expires_at=expires_at)
+        self.pending_invoices.append(payment_hash)
+
+        return InvoiceResponse(
+            ok=True, checking_id=payment_hash, payment_request=payment_request
+        )
+
+    async def _create_signed_description_hash_invoice(
+        self,
+        amount: int,
+        description_hash: bytes | None = None,
+        unhashed_description: bytes | None = None,
+        **kwargs,
+    ) -> InvoiceResponse:
+        """D1: commit to a caller-chosen description hash by signing the
+        canonical request with the Spark identity key (blink-wip#1158)."""
+        try:
+            import breez_sdk_spark  # type: ignore[reportMissingImports]
+        except ImportError:
+            return InvoiceResponse(
+                ok=False,
+                error_message=(
+                    "breez-sdk-spark is not installed. "
+                    "Ask admin to run `uv sync --extra blink-spark`."
+                ),
+            )
+
+        desc_hash_hex = (
+            description_hash.hex()
+            if description_hash
+            else hashlib.sha256(unhashed_description).hexdigest()  # type: ignore[arg-type]
+        )
+        amount_msat = int(amount) * 1000
+        expiry_secs = int(kwargs.get("expiry") or 3600)
+        request_id = uuid.uuid4().hex
+
+        try:
+            sdk = await self._ensure_sdk()
+
+            ts = int(time.time())
+            canonical = (
+                f"lnurl-invoice-v1:{self.domain}:{self.username}:{amount_msat}:"
+                f"{desc_hash_hex}:{expiry_secs}:{request_id}"
+            )
+            signed = await sdk.sign_message(
+                breez_sdk_spark.SignMessageRequest(
+                    message=f"{canonical}-{ts}", compact=False
+                )
+            )
+
+            response = await self.client.post(
+                f"{self.endpoint}/lnurlp/{self.username}/invoice/signed",
+                json={
+                    "amount_msat": amount_msat,
+                    "description_hash": desc_hash_hex,
+                    "expiry_secs": expiry_secs,
+                    "request_id": request_id,
+                    "pubkey": signed.pubkey,
+                    "timestamp": ts,
+                    "signature": signed.signature,
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+        except Exception as exc:
+            logger.warning(exc)
+            return InvoiceResponse(
+                ok=False, error_message=f"signed invoice error: {exc}"
+            )
+
+        error_message = self._validate_callback_response(data)
+        if error_message:
+            return InvoiceResponse(ok=False, error_message=error_message)
+
+        payment_request: str = data["pr"]
+
+        try:
+            decoded = bolt11_lib.decode(payment_request)
+        except Exception as exc:
+            return InvoiceResponse(
+                ok=False, error_message=f"Invalid invoice from callback: {exc}"
+            )
+
+        error_message = self._validate_callback_invoice(decoded, amount_msat)
+        if error_message:
+            return InvoiceResponse(ok=False, error_message=error_message)
+
+        # the whole point of D1: the invoice must commit to OUR hash
+        invoice_desc_hash = decoded.tags.get(TagChar.description_hash)
+        if invoice_desc_hash != desc_hash_hex:
+            return InvoiceResponse(
+                ok=False,
+                error_message=(
+                    "server returned invoice with wrong description hash "
+                    f"({invoice_desc_hash})"
+                ),
+            )
+
+        payment_hash: str | None = decoded.payment_hash
+        expiry_secs_decoded = getattr(decoded, "expiry", None) or 3600
+        issued_at = getattr(decoded, "date", None) or time.time()
+        expires_at = float(issued_at) + float(expiry_secs_decoded)
 
         assert payment_hash is not None
         self._verify_urls[payment_hash] = data["verify"]
