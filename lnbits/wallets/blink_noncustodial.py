@@ -265,7 +265,9 @@ class BlinkNonCustodialWallet(Wallet):
             sdk = await self._ensure_sdk()
 
             prepare_response = await sdk.prepare_send_payment(
-                breez_sdk_spark.PrepareSendPaymentRequest(payment_request=bolt11)
+                breez_sdk_spark.PrepareSendPaymentRequest(
+                    payment_request=breez_sdk_spark.PaymentRequest.INPUT(bolt11)
+                )
             )
             fee_sats = self._extract_lightning_fee(prepare_response)
             if fee_sats is None:
