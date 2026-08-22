@@ -462,7 +462,9 @@ class BlinkNonCustodialWallet(Wallet):
         if parsed.scheme != "https":
             raise ValueError("callback URL must be https")
         # allowlist: only accept callbacks served by the address's own domain
-        if parsed.netloc.lower() != f"{self.domain}".lower():
+        # or a subdomain of it (e.g. lnurl.blink.sv for user@blink.sv)
+        host = parsed.netloc.lower()
+        if host != self.domain.lower() and not host.endswith(f".{self.domain.lower()}"):
             raise ValueError(f"callback host '{parsed.netloc}' is not allowed")
         return callback
 

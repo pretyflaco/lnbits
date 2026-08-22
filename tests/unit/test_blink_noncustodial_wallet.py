@@ -257,6 +257,44 @@ async def test_create_invoice_rejects_foreign_callback_host(monkeypatch, mocker)
 
 
 @pytest.mark.anyio
+async def test_create_invoice_accepts_subdomain_callback(monkeypatch, mocker):
+    """blink.sv serves callbacks from lnurl.blink.sv - must be allowed"""
+    wallet = make_wallet(monkeypatch)
+    decoded = fake_decoded()
+    mocker.patch(
+        "lnbits.wallets.blink_noncustodial.bolt11_lib.decode", return_value=decoded
+    )
+    metadata = pay_request_metadata()
+    metadata["callback"] = "https://lnurl.blink.sv/lnurlp/hanzy/invoice"
+
+    def route(url, params=None):
+        if "invoice" in url:
+            return mock_http_response(
+                {"pr": "lnbc...", "verify": "https://lnurl.blink.sv/v/a"}
+            )
+        return mock_http_response(metadata)
+
+    mocker.patch.object(wallet.client, "get", side_effect=route)
+    response = await wallet.create_invoice(amount=100)
+    assert response.ok is True
+
+
+@pytest.mark.anyio
+async def test_create_invoice_rejects_lookalike_host(monkeypatch, mocker):
+    wallet = make_wallet(monkeypatch)
+    metadata = pay_request_metadata()
+    metadata["callback"] = "https://evilblink.sv/callback"
+
+    async def fake_get(url, params=None):
+        return mock_http_response(metadata)
+
+    mocker.patch.object(wallet.client, "get", side_effect=fake_get)
+    response = await wallet.create_invoice(amount=100)
+    assert response.ok is False
+    assert "not allowed" in (response.error_message or "")
+
+
+@pytest.mark.anyio
 async def test_create_invoice_rejects_wrong_tag(monkeypatch, mocker):
     wallet = make_wallet(monkeypatch)
 
