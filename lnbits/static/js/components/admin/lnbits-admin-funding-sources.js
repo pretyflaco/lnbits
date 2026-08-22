@@ -171,6 +171,11 @@ window.app.component('lnbits-admin-funding-sources', {
               hint: 'Controls funds. Only add after backing it up.',
               advanced: true
             },
+            blink_noncustodial_grant_privkey: {
+              label: 'Delegated Receive Grant Key (optional)',
+              hint: 'Hex private key authorized by the account owner for invoice requests. Receive-only: no spend authority. Enables LNURLp without a seed.',
+              advanced: true
+            },
             blink_noncustodial_breez_api_key: {
               label: 'Breez API Key (required with seed)',
               advanced: true

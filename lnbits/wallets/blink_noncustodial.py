@@ -87,6 +87,26 @@ class BlinkNonCustodialWallet(Wallet):
         ).rstrip("/")
 
         self._has_seed = bool(settings.blink_noncustodial_spark_mnemonic)
+        self._grant_key = None
+        self._grant_pubkey: str | None = None
+
+        grant_privkey_hex = settings.blink_noncustodial_grant_privkey
+        if grant_privkey_hex:
+            try:
+                from coincurve import PrivateKey
+
+                key_bytes = bytes.fromhex(grant_privkey_hex.strip())
+                if len(key_bytes) != 32:
+                    raise ValueError("must be 32 bytes")
+                self._grant_key = PrivateKey(key_bytes)
+                self._grant_pubkey = self._grant_key.public_key.format(
+                    compressed=True
+                ).hex()
+            except Exception as exc:
+                raise ValueError(
+                    "cannot initialize BlinkNonCustodialWallet: invalid "
+                    f"blink_noncustodial_grant_privkey: {exc}"
+                ) from exc
 
         if self._has_seed:
             if not HAS_BREEZ_SPARK_SDK:
@@ -165,20 +185,16 @@ class BlinkNonCustodialWallet(Wallet):
         **kwargs,
     ) -> InvoiceResponse:
         if description_hash or unhashed_description:
-            if not self._has_seed:
-                hint = (
-                    "configure a Spark seed (signed invoice support) to use "
-                    "description-hash invoices"
-                    if self._has_seed
-                    else "address-only mode cannot commit custom metadata; "
-                    "configure a Spark seed to enable LNURLp/zaps"
-                )
+            can_sign = self._has_seed or self._grant_key is not None
+            if not can_sign:
                 return InvoiceResponse(
                     ok=False,
                     error_message=(
                         "Blink non-custodial wallet does not support "
                         "description-hash invoices without signing authority: "
-                        f"{hint}"
+                        "configure a Spark seed or a delegated receive grant "
+                        "(blink_noncustodial_grant_privkey) to enable "
+                        "LNURLp/zaps"
                     ),
                 )
             return await self._create_signed_description_hash_invoice(
@@ -248,42 +264,71 @@ class BlinkNonCustodialWallet(Wallet):
         unhashed_description: bytes | None = None,
         **kwargs,
     ) -> InvoiceResponse:
-        """D1: commit to a caller-chosen description hash by signing the
-        canonical request with the Spark identity key (blink-wip#1158)."""
-        try:
-            import breez_sdk_spark  # type: ignore[reportMissingImports]
-        except ImportError:
-            return InvoiceResponse(
-                ok=False,
-                error_message=(
-                    "breez-sdk-spark is not installed. "
-                    "Ask admin to run `uv sync --extra blink-spark`."
-                ),
-            )
+        """Signs a D1/D2 invoice request committing to the caller-chosen
+        description hash. Signing authority comes from either a delegated
+        receive grant key (preferred, no spend authority) or the Spark seed
+        via the Breez SDK."""
+        signature: str
+        pubkey: str
 
-        desc_hash_hex = (
-            description_hash.hex()
-            if description_hash
-            else hashlib.sha256(unhashed_description).hexdigest()  # type: ignore[arg-type]
-        )
-        amount_msat = int(amount) * 1000
-        expiry_secs = int(kwargs.get("expiry") or 3600)
-        request_id = uuid.uuid4().hex
-
-        try:
-            sdk = await self._ensure_sdk()
-
+        if self._grant_key is not None:
+            # D2: plain ECDSA with the delegated grant key — no SDK needed
             ts = int(time.time())
+            request_id = uuid.uuid4().hex
+            desc_hash_hex = (
+                description_hash.hex()
+                if description_hash
+                else hashlib.sha256(unhashed_description).hexdigest()  # type: ignore[arg-type]
+            )
+            amount_msat = int(amount) * 1000
+            expiry_secs = int(kwargs.get("expiry") or 3600)
             canonical = (
                 f"lnurl-invoice-v1:{self.domain}:{self.username}:{amount_msat}:"
                 f"{desc_hash_hex}:{expiry_secs}:{request_id}"
             )
-            signed = await sdk.sign_message(
-                breez_sdk_spark.SignMessageRequest(
-                    message=f"{canonical}-{ts}", compact=False
+            digest = hashlib.sha256(f"{canonical}-{ts}".encode()).digest()
+            signature = self._grant_key.sign(digest, hasher=None).hex()
+            pubkey = self._grant_pubkey or ""
+        else:
+            try:
+                import breez_sdk_spark  # type: ignore[reportMissingImports]
+            except ImportError:
+                return InvoiceResponse(
+                    ok=False,
+                    error_message=(
+                        "breez-sdk-spark is not installed. "
+                        "Ask admin to run `uv sync --extra blink-spark`."
+                    ),
                 )
-            )
+            try:
+                sdk = await self._ensure_sdk()
+                ts = int(time.time())
+                request_id = uuid.uuid4().hex
+                desc_hash_hex = (
+                    description_hash.hex()
+                    if description_hash
+                    else hashlib.sha256(unhashed_description).hexdigest()  # type: ignore[arg-type]
+                )
+                amount_msat = int(amount) * 1000
+                expiry_secs = int(kwargs.get("expiry") or 3600)
+                canonical = (
+                    f"lnurl-invoice-v1:{self.domain}:{self.username}:{amount_msat}:"
+                    f"{desc_hash_hex}:{expiry_secs}:{request_id}"
+                )
+                signed = await sdk.sign_message(
+                    breez_sdk_spark.SignMessageRequest(
+                        message=f"{canonical}-{ts}", compact=False
+                    )
+                )
+                signature = signed.signature
+                pubkey = signed.pubkey
+            except Exception as exc:
+                logger.warning(exc)
+                return InvoiceResponse(
+                    ok=False, error_message=f"signed invoice error: {exc}"
+                )
 
+        try:
             response = await self.client.post(
                 f"{self.endpoint}/lnurlp/{self.username}/invoice/signed",
                 json={
@@ -291,9 +336,9 @@ class BlinkNonCustodialWallet(Wallet):
                     "description_hash": desc_hash_hex,
                     "expiry_secs": expiry_secs,
                     "request_id": request_id,
-                    "pubkey": signed.pubkey,
+                    "pubkey": pubkey,
                     "timestamp": ts,
-                    "signature": signed.signature,
+                    "signature": signature,
                 },
             )
             response.raise_for_status()

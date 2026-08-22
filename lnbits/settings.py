@@ -592,6 +592,14 @@ class BlinkNonCustodialFundingSource(LNbitsSettings):
     blink_noncustodial_mnemonic_backup_confirmed: bool = Field(default=False)
     blink_noncustodial_breez_api_key: str | None = Field(default=None)
     blink_noncustodial_payment_timeout_secs: int = Field(default=60, ge=0)
+    blink_noncustodial_grant_privkey: str | None = Field(
+        default=None,
+        description=(
+            "Hex private key of a delegated receive grant (D2): signs "
+            "invoice requests without spend authority. Takes precedence "
+            "over the Spark seed for description-hash invoices."
+        ),
+    )
 
 
 class ZBDFundingSource(LNbitsSettings):
