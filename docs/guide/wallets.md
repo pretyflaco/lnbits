@@ -229,6 +229,26 @@ You can generate a Blink API key at [https://dashboard.blink.sv](https://dashboa
 - `BLINK_WS_ENDPOINT`: `wss://ws.blink.sv/graphql`
 - `BLINK_TOKEN`: `BlinkToken`
 
+## Blink (non-custodial)
+
+Connects to a Blink **non-custodial** account through its public Lightning Address. No Blink API key is required.
+
+In address-only mode the wallet can only receive: invoices are created through the LNURL-pay flow and settlement is confirmed via LUD-21 verify (payments count as paid only with a valid preimage). Sending is not available and the reported backend balance is always 0, so do not enable the watchdog's automatic VoidWallet switching.
+
+Optionally add a Spark seed (and a Breez API key) to enable sending BOLT11 payments through the [Breez Spark SDK](https://github.com/breez/spark-sdk), installed with `uv sync --extra blink-spark`. The seed controls funds; confirm you have backed it up before configuring it.
+
+**Required env vars**
+
+- `LNBITS_BACKEND_WALLET_CLASS`: `BlinkNonCustodialWallet`
+- `BLINK_NONCUSTODIAL_LN_ADDRESS`: `user@blink.sv` (a bare username defaults to blink.sv)
+
+**Optional env vars**
+
+- `BLINK_NONCUSTODIAL_LNURL_ENDPOINT`: defaults to `https://<domain of the address>`
+- `BLINK_NONCUSTODIAL_SPARK_MNEMONIC`: 12 or 24 words, enables send
+- `BLINK_NONCUSTODIAL_MNEMONIC_BACKUP_CONFIRMED`: must be `true` when a seed is set
+- `BLINK_NONCUSTODIAL_BREEZ_API_KEY`: required by the SDK when a seed is set
+
 ## Alby
 
 For the invoice to work you must have a publicly accessible URL in your LNbits. No manual webhook configuration required.

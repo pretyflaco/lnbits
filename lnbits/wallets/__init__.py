@@ -7,6 +7,7 @@ from lnbits.wallets.base import Feature, Wallet
 
 from .alby import AlbyWallet
 from .blink import BlinkWallet
+from .blink_noncustodial import BlinkNonCustodialWallet
 from .boltz import BoltzWallet
 from .breez import BreezSdkWallet
 from .breez_liquid import BreezLiquidSdkWallet
@@ -57,6 +58,7 @@ funding_source: Wallet = fake_wallet
 
 __all__ = [
     "AlbyWallet",
+    "BlinkNonCustodialWallet",
     "BlinkWallet",
     "BoltzWallet",
     "BreezLiquidSdkWallet",

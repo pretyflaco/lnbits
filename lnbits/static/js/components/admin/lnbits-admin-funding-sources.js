@@ -154,6 +154,30 @@ window.app.component('lnbits-admin-funding-sources', {
           }
         ],
         [
+          'BlinkNonCustodialWallet',
+          'Blink (non-custodial)',
+          {
+            blink_noncustodial_ln_address: {
+              label: 'Blink Lightning Address',
+              hint: 'Receive-only address, e.g. user@blink.sv. Add a Spark seed to enable sending.'
+            },
+            blink_noncustodial_lnurl_endpoint: {
+              label: 'LNURL Endpoint',
+              value: 'https://blink.sv',
+              advanced: true
+            },
+            blink_noncustodial_spark_mnemonic: {
+              label: 'Spark Seed Phrase (optional, enables send)',
+              hint: 'Controls funds. Only add after backing it up.',
+              advanced: true
+            },
+            blink_noncustodial_breez_api_key: {
+              label: 'Breez API Key (required with seed)',
+              advanced: true
+            }
+          }
+        ],
+        [
           'AlbyWallet',
           'Alby',
           {

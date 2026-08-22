@@ -579,6 +579,21 @@ class BlinkFundingSource(LNbitsSettings):
     blink_token: str | None = Field(default=None)
 
 
+class BlinkNonCustodialFundingSource(LNbitsSettings):
+    blink_noncustodial_ln_address: str | None = Field(default=None)
+    blink_noncustodial_lnurl_endpoint: str | None = Field(
+        default=None,
+        description=(
+            "Base URL of the LNURL-pay server, defaults to https://<domain of "
+            "blink_noncustodial_ln_address>"
+        ),
+    )
+    blink_noncustodial_spark_mnemonic: str | None = Field(default=None)
+    blink_noncustodial_mnemonic_backup_confirmed: bool = Field(default=False)
+    blink_noncustodial_breez_api_key: str | None = Field(default=None)
+    blink_noncustodial_payment_timeout_secs: int = Field(default=60, ge=0)
+
+
 class ZBDFundingSource(LNbitsSettings):
     zbd_api_endpoint: str | None = Field(default="https://api.zebedee.io/v0/")
     zbd_api_key: str | None = Field(default=None)
@@ -749,6 +764,7 @@ class FundingSourcesSettings(
     LndGrpcFundingSource,
     LnPayFundingSource,
     BlinkFundingSource,
+    BlinkNonCustodialFundingSource,
     AlbyFundingSource,
     BoltzFundingSource,
     ZBDFundingSource,
