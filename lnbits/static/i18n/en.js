@@ -431,6 +431,7 @@ window.localisation.en = {
   signin_with_oauth: 'Login with',
   signin_with_oauth_or: 'or Login with',
   signin_with_nostr: 'Continue with Nostr',
+  signin_with_nostr_connect: 'Continue with NostrConnect (remote signer)',
   signin_with_google: 'Sign in with Google',
   signin_with_github: 'Sign in with GitHub',
   signin_with_custom_org: 'Sign in with {custom_org}',

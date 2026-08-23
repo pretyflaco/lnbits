@@ -1017,6 +1017,27 @@ include('components/lnbits-error.vue') %}
         </q-tooltip>
       </q-btn>
       <q-btn
+        v-if="g.settings.extensions.includes('nostrlogin')"
+        href="/nostrlogin"
+        type="a"
+        outline
+        no-caps
+        color="grey"
+        padding="sm md"
+      >
+        <div class="row items-center no-wrap">
+          <q-avatar size="32px">
+            <q-img
+              src="/static/images/logos/nostr.svg"
+              class="bg-secondary"
+            ></q-img>
+          </q-avatar>
+        </div>
+        <q-tooltip>
+          <span v-text="$t('signin_with_nostr_connect')"></span>
+        </q-tooltip>
+      </q-btn>
+      <q-btn
         v-if="authMethods.includes('github-auth')"
         href="/api/v1/auth/github"
         type="a"
