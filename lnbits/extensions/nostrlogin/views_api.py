@@ -71,6 +71,9 @@ async def create_login_session(request: Request) -> JSONResponse:
         binding_nonce_hash=_binding_nonce_hash(binding_nonce),
         login_url=_request_base_url(request) + _NIP98_LOGIN_PATH,
         app_name=settings.lnbits_site_title,
+        instance_url=_request_base_url(request),
+        image_url=ext_settings.signer_app_image,
+        diagnostic=ext_settings.enable_diagnostic_logging,
     )
     return _session_response(session, ext_settings.relays, binding_nonce)
 
@@ -90,6 +93,9 @@ async def create_link_session(
         binding_nonce_hash=_binding_nonce_hash(binding_nonce),
         login_url=_request_base_url(request) + _NIP98_LOGIN_PATH,
         app_name=settings.lnbits_site_title,
+        instance_url=_request_base_url(request),
+        image_url=ext_settings.signer_app_image,
+        diagnostic=ext_settings.enable_diagnostic_logging,
     )
     return _session_response(session, ext_settings.relays, binding_nonce)
 

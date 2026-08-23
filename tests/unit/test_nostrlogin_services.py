@@ -61,6 +61,20 @@ def test_build_connect_uri():
     assert "name=LNbits" in query
 
 
+def test_build_connect_uri_with_url_and_image():
+    uri = build_connect_uri(
+        "a" * 64,
+        ["wss://a.example"],
+        "s3cret",
+        "LNbits",
+        instance_url="https://lnbits.example",
+        image_url="https://lnbits.example/avatar.png",
+    )
+    query = urlparse(uri).query.split("&")
+    assert "url=https%3A%2F%2Flnbits.example" in query
+    assert "image=https%3A%2F%2Flnbits.example%2Favatar.png" in query
+
+
 # ---------------------------------------------------------------------------
 # URL normalization
 
@@ -192,6 +206,93 @@ def test_is_https_url():
     assert not _is_https_url("ftp://x")
     assert not _is_https_url(None)
     assert not _is_https_url(123)
+
+
+# ---------------------------------------------------------------------------
+# Real RelayPool against an in-process websocket relay
+
+
+@pytest.mark.anyio
+async def test_relaypool_receives_events_from_real_relay():
+    """
+    Regression test for the RelayPool queue wiring: events published to a
+    real relay must land on pool.queue. Uses the unmodified RelayPool.
+    """
+    from websockets import serve
+
+    from lnbits.extensions.nostrlogin.services.nip46 import RelayPool
+
+    received_events: list[dict] = []
+
+    async def handler(ws):
+        async for raw in ws:
+            msg = json.loads(raw)
+            if not isinstance(msg, list):
+                continue
+            if msg[0] == "REQ":
+                p_tag = msg[2]["#p"][0]
+                event = {
+                    "id": "ab" * 32,
+                    "pubkey": "cd" * 32,
+                    "created_at": int(time.time()),
+                    "kind": NIP46_KIND,
+                    "tags": [["p", p_tag]],
+                    "content": "payload",
+                    "sig": "00" * 64,
+                }
+                await ws.send(json.dumps(["EVENT", msg[1], event]))
+            elif msg[0] == "EVENT":
+                received_events.append(msg[1])
+
+    server = await serve(handler, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    client_pubkey = "ef" * 32
+
+    pool = RelayPool([f"ws://127.0.0.1:{port}"], client_pubkey)
+    await pool.start()
+    try:
+        event = await asyncio.wait_for(pool.queue.get(), timeout=10)
+        assert event["kind"] == NIP46_KIND
+        assert event["content"] == "payload"
+        assert ["p", client_pubkey] in event["tags"]
+    finally:
+        await pool.close()
+        server.close()
+        await server.wait_closed()
+
+
+@pytest.mark.anyio
+async def test_relaypool_ignores_events_for_other_pubkeys():
+    from websockets import serve
+
+    from lnbits.extensions.nostrlogin.services.nip46 import RelayPool
+
+    async def handler(ws):
+        async for raw in ws:
+            msg = json.loads(raw)
+            if isinstance(msg, list) and msg[0] == "REQ":
+                event = {
+                    "id": "ab" * 32,
+                    "pubkey": "cd" * 32,
+                    "created_at": int(time.time()),
+                    "kind": NIP46_KIND,
+                    "tags": [["p", "11" * 32]],  # not our client pubkey
+                    "content": "payload",
+                    "sig": "00" * 64,
+                }
+                await ws.send(json.dumps(["EVENT", msg[1], event]))
+
+    server = await serve(handler, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    pool = RelayPool([f"ws://127.0.0.1:{port}"], "ef" * 32)
+    await pool.start()
+    try:
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(pool.queue.get(), timeout=3)
+    finally:
+        await pool.close()
+        server.close()
+        await server.wait_closed()
 
 
 # ---------------------------------------------------------------------------

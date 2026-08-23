@@ -16,6 +16,9 @@ class NostrLoginSettings(BaseModel):
     allow_auto_user_creation: bool = False
     sync_profile_pictures: bool = True
     enable_diagnostic_logging: bool = False
+    signer_app_image: str | None = Field(
+        default="https://avatars.githubusercontent.com/u/63878660?s=200&v=4"
+    )
 
     @validator("relays", pre=True)
     @classmethod

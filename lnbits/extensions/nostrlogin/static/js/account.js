@@ -33,6 +33,12 @@ window.app = Vue.createApp({
           label: 'Diagnostic logging',
           type: 'bool',
           description: 'Verbose logging of handshake milestones'
+        },
+        {
+          name: 'signer_app_image',
+          label: 'Signer app image URL',
+          description:
+            'Avatar shown by the signer when pairing (nostrconnect image param)'
         }
       ]
     }

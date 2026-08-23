@@ -54,6 +54,7 @@ def build_connect_uri(
     secret: str,
     app_name: str,
     instance_url: str | None = None,
+    image_url: str | None = None,
 ) -> str:
     """Builds a nostrconnect:// pairing URI (NIP-46)."""
     params = [f"relay={quote(relay, safe='')}" for relay in relays]
@@ -62,6 +63,8 @@ def build_connect_uri(
     params.append(f"name={quote(app_name, safe='')}")
     if instance_url:
         params.append(f"url={quote(instance_url, safe='')}")
+    if image_url:
+        params.append(f"image={quote(image_url, safe='')}")
     return f"nostrconnect://{client_pubkey_hex}?{'&'.join(params)}"
 
 
@@ -85,6 +88,7 @@ class Nip46Session:
     login_url: str  # absolute URL used for the 'u' tag of the signed event
     binding_nonce_hash: str
     relays: list[str] = field(default_factory=list)
+    diagnostic: bool = False
     status: str = "pending"  # pending | approved | failed | auth_required
     user_pubkey: str | None = None
     auth_url: str | None = None
@@ -170,7 +174,7 @@ class RelayPool:
         ]
         if self.client_pubkey_hex not in p_tags:
             return
-        await self._queue.put(event)
+        await self.queue.put(event)
 
 
 class NostrLoginService:
@@ -185,6 +189,9 @@ class NostrLoginService:
         binding_nonce_hash: str,
         login_url: str,
         app_name: str,
+        instance_url: str | None = None,
+        image_url: str | None = None,
+        diagnostic: bool = False,
         autostart: bool = True,
     ) -> Nip46Session:
         private_key = PrivateKey()
@@ -195,6 +202,8 @@ class NostrLoginService:
             relays,
             secret,
             app_name,
+            instance_url=instance_url,
+            image_url=image_url,
         )
         session = Nip46Session(
             id=session_id,
@@ -206,6 +215,7 @@ class NostrLoginService:
             login_url=login_url,
             binding_nonce_hash=binding_nonce_hash,
             relays=list(relays),
+            diagnostic=diagnostic,
         )
         session.task = (
             asyncio.create_task(self._run_session(session)) if autostart else None
@@ -243,10 +253,15 @@ class NostrLoginService:
         use_nip04 = False
         try:
             await pool.start()
+            self._diag(session, f"subscribed on {len(session.relays)} relay(s)")
 
             deadline = time.time() + SESSION_TTL_SECONDS
             signer_pubkey, use_nip04 = await self._await_connect_ack(
                 session, pool, deadline
+            )
+            self._diag(
+                session,
+                f"connect ack received from {signer_pubkey} (nip04={use_nip04})",
             )
 
             user_pubkey = await self._rpc(
@@ -260,6 +275,7 @@ class NostrLoginService:
                 timeout_seconds=SIGN_TIMEOUT_SECONDS,
             )
             session.user_pubkey = user_pubkey
+            self._diag(session, f"signer user pubkey: {user_pubkey}")
 
             signed_event = await self._request_signed_event(
                 session, pool, signer_pubkey, use_nip04, deadline
@@ -279,6 +295,9 @@ class NostrLoginService:
                     expected_method="POST",
                     expected_nonce=session.nip98_nonce,
                 )
+            self._diag(
+                session, f"signed event kind {signed_event.get('kind')} validated"
+            )
             session.status = "approved"
         except Exception as e:
             logger.warning(f"NostrLogin session {session.id} failed: {e!s}")
@@ -288,6 +307,11 @@ class NostrLoginService:
             await pool.close()
             # Best-effort removal of the ephemeral key material.
             del client_private_key
+
+    @staticmethod
+    def _diag(session: Nip46Session, message: str) -> None:
+        if session.diagnostic:
+            logger.info(f"NostrLogin DIAG session {session.id}: {message}")
 
     async def _request_signed_event(
         self,

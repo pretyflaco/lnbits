@@ -22,3 +22,9 @@ async def m002_settings(db):
         """
     )
 
+
+async def m003_signer_app_image(db):
+    await db.execute(
+        "ALTER TABLE nostrlogin.settings ADD COLUMN signer_app_image TEXT"
+    )
+
