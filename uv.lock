@@ -443,6 +443,28 @@ wheels = [
 ]
 
 [[package]]
+name = "breez-sdk-spark"
+version = "0.22.0"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ee/b1/5200e6cbc7566298cef81d8b0037fba8bc893a3cfbde8580d79c5bffd1e9/breez_sdk_spark-0.22.0-cp310-cp310-macosx_11_0_universal2.whl", hash = "sha256:ca529b81d9c2ff823864246eba050cf6a6b02c91bf45f204d62bd56edda0a1a4", size = 20097986, upload-time = "2026-08-12T12:23:24.901Z" },
+    { url = "https://files.pythonhosted.org/packages/d5/72/58251fe9b270be136766733d01e968641bea43126f8276786d14a603cb85/breez_sdk_spark-0.22.0-cp310-cp310-manylinux_2_31_aarch64.whl", hash = "sha256:c263666386c57c2b947ecd39a07057dea03aad0e92f86dae8a4a04f04b139e35", size = 17428170, upload-time = "2026-08-12T12:23:27.079Z" },
+    { url = "https://files.pythonhosted.org/packages/b9/22/f6bc81cd5d3e87714fb6c08dc9494a1a48722638567454997a8882edabd0/breez_sdk_spark-0.22.0-cp310-cp310-manylinux_2_31_x86_64.whl", hash = "sha256:f1d1c852d52e265ce21821b2d223fc839a5ddb147d1cb3d5e891d2bc7e63ba5c", size = 17374701, upload-time = "2026-08-12T12:23:28.924Z" },
+    { url = "https://files.pythonhosted.org/packages/76/2f/1b99dea657d2447d425b5f98cc835aa8c9afe670b0174352d50ed502367c/breez_sdk_spark-0.22.0-cp310-cp310-win32.whl", hash = "sha256:9582ec78374522665bc08f102ac1077806e13d45f2e3f5926efc1e1c36052f0d", size = 8170012, upload-time = "2026-08-12T12:23:30.883Z" },
+    { url = "https://files.pythonhosted.org/packages/63/8c/ea917c56b6b7783febaad1bbea2c027795907f6f7345ab2d802209fcbfd2/breez_sdk_spark-0.22.0-cp310-cp310-win_amd64.whl", hash = "sha256:ebec25e1d3a3c952f07c766b000f25f52ad3ba3559dd1b47758cb925b6ba6720", size = 8503207, upload-time = "2026-08-12T12:23:32.348Z" },
+    { url = "https://files.pythonhosted.org/packages/b2/c1/ea82f41224ef692e4cbd38b3b8dc1dc51fd5a30a6a34e613a847ba4b7081/breez_sdk_spark-0.22.0-cp311-cp311-macosx_11_0_universal2.whl", hash = "sha256:5f67e8f44f2706d9467fe67c3b914d81e3edff1b054b029df2a68d6ae4eb823b", size = 20097988, upload-time = "2026-08-12T12:23:34.095Z" },
+    { url = "https://files.pythonhosted.org/packages/2a/d0/66b9482b8d67805a382915cb4495fb0601e51f5c53755d38625a218b767b/breez_sdk_spark-0.22.0-cp311-cp311-manylinux_2_31_aarch64.whl", hash = "sha256:d0a93b7d42bf830efd0b4947eeeb2ec501f9c16d39cc52808943fdad7c9093c1", size = 17428169, upload-time = "2026-08-12T12:23:36.54Z" },
+    { url = "https://files.pythonhosted.org/packages/de/5e/58bad35e09b65542775594e49a02393dc88aff04e9a2be98f6af89f631c5/breez_sdk_spark-0.22.0-cp311-cp311-manylinux_2_31_x86_64.whl", hash = "sha256:e84f85c930a471510788f20c5ca7f8fed2232e84a3facedc3db5e6cbdc686a76", size = 17374699, upload-time = "2026-08-12T12:23:38.718Z" },
+    { url = "https://files.pythonhosted.org/packages/de/66/eb94b27c979138582f8d27d5bd9353c6967ed12ba82f7484db5333d6efef/breez_sdk_spark-0.22.0-cp311-cp311-win32.whl", hash = "sha256:0ee5d582e298cdd353fbcbaf8e5f0ba986aa7cf9d2c556db17dcc1a21ce13020", size = 8170013, upload-time = "2026-08-12T12:23:40.429Z" },
+    { url = "https://files.pythonhosted.org/packages/7a/29/181692a321f6739148e11ab9c02842499420664db511406348c14010cc17/breez_sdk_spark-0.22.0-cp311-cp311-win_amd64.whl", hash = "sha256:8b688fd9d6ef33225a8ed4c5eba9f097529b034b522eba8778103144f72d5efb", size = 8503207, upload-time = "2026-08-12T12:23:41.71Z" },
+    { url = "https://files.pythonhosted.org/packages/1a/1f/0d9c9d8f5442555e22c8ce6662c895e52d023d9649ee985070fedb2cc4fc/breez_sdk_spark-0.22.0-cp312-cp312-macosx_11_0_universal2.whl", hash = "sha256:e29c067a96453bbb924fc1282251ae11757b5b83ff3f316c406e7e8d380a64c2", size = 20098023, upload-time = "2026-08-12T12:23:43.454Z" },
+    { url = "https://files.pythonhosted.org/packages/dc/45/97623ea6b5ff8c275ae12c444c9b371689e514b4b902db11377af03c7b1a/breez_sdk_spark-0.22.0-cp312-cp312-manylinux_2_31_aarch64.whl", hash = "sha256:8c0b7dcf9153e9d41757596c9291e9c2f5d263bc5f73e4873e5d68bb9d13d9ab", size = 17428172, upload-time = "2026-08-12T12:23:45.375Z" },
+    { url = "https://files.pythonhosted.org/packages/9d/36/9ec69bdcbdbd37efd0ada7f64243555216f71d9f27df3ecff6c9eec0a73d/breez_sdk_spark-0.22.0-cp312-cp312-manylinux_2_31_x86_64.whl", hash = "sha256:c27b279c644c751dd204a21d5f8033de2e986420f0d3be6a725d547246f0bab0", size = 17374701, upload-time = "2026-08-12T12:23:47.425Z" },
+    { url = "https://files.pythonhosted.org/packages/d4/10/7097ee2611bbada47a0e92118d50167043e6b993d2dcf02a1301782a0abd/breez_sdk_spark-0.22.0-cp312-cp312-win32.whl", hash = "sha256:9d251d31fc34609252d917261f1f61d9b0e6c1db919d90023652d4cc2e50108b", size = 8170014, upload-time = "2026-08-12T12:23:49.248Z" },
+    { url = "https://files.pythonhosted.org/packages/9b/15/ef63ea593cb744390dbf08b25da5b7c182cd93b25dabd5f087527e7a3e54/breez_sdk_spark-0.22.0-cp312-cp312-win_amd64.whl", hash = "sha256:cd9351f2355c138f58c1148c5d6787682493d5f5b2e1ddf31fa0c5616af37fdf", size = 8503207, upload-time = "2026-08-12T12:23:50.794Z" },
+]
+
+[[package]]
 name = "certifi"
 version = "2026.5.20"
 source = { registry = "https://pypi.org/simple" }
@@ -1338,6 +1360,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+blink-spark = [
+    { name = "breez-sdk-spark" },
+]
 breez = [
     { name = "breez-sdk" },
     { name = "breez-sdk-liquid" },
@@ -1383,6 +1408,7 @@ requires-dist = [
     { name = "boltz-client", marker = "extra == 'liquid'", specifier = "==0.4.0" },
     { name = "breez-sdk", marker = "extra == 'breez'", specifier = "~=0.8.0" },
     { name = "breez-sdk-liquid", marker = "extra == 'breez'", specifier = "~=0.11.11" },
+    { name = "breez-sdk-spark", marker = "extra == 'blink-spark'", specifier = "==0.22.0" },
     { name = "click", specifier = "~=8.3.1" },
     { name = "embit", specifier = "~=0.8.0" },
     { name = "fastapi", specifier = "~=0.116.1" },
@@ -1425,7 +1451,7 @@ requires-dist = [
     { name = "websocket-client", specifier = "~=1.9.0" },
     { name = "websockets", specifier = "~=15.0.1" },
 ]
-provides-extras = ["breez", "liquid", "migration"]
+provides-extras = ["breez", "blink-spark", "liquid", "migration"]
 
 [package.metadata.requires-dev]
 dev = [
