@@ -44,26 +44,29 @@
           :key="i"
         >
           <div class="col-12">
+            <p class="q-mt-sm q-mb-xs">
+              <span v-text="prop.label"></span>
+              <sup v-if="prop.info">
+                <q-icon name="info" size="16px" class="q-ml-xs cursor-pointer">
+                  <q-tooltip v-if="!prop.info_menu" max-width="300px">
+                    <span v-html="prop.info"></span>
+                  </q-tooltip>
+                  <q-menu v-else>
+                    <div class="q-pa-sm" style="max-width: 300px">
+                      <span v-html="prop.info"></span>
+                    </div>
+                  </q-menu>
+                </q-icon>
+              </sup>
+            </p>
             <q-input
               v-model="formData[key]"
               filled
-              class="q-mt-sm"
               :type="prop.plaintext ? 'text' : hideInput ? 'password' : 'text'"
-              :label="prop.label"
               :hint="prop.hint"
               :placeholder="placeholderOf(key, prop)"
               :readonly="prop.readonly || false"
             >
-              <q-icon
-                v-if="prop.info"
-                name="info"
-                size="16px"
-                class="cursor-pointer q-ml-xs"
-              >
-                <q-tooltip max-width="300px">
-                  <span v-html="prop.info"></span>
-                </q-tooltip>
-              </q-icon>
               <q-btn
                 v-if="prop.copy"
                 @click="utils.copyText(formData[key])"
@@ -101,7 +104,11 @@
           dense
           expand-separator
           icon="tune"
-          label="Advanced"
+          :label="
+            fund === 'BlinkNonCustodialWallet'
+              ? 'Advanced (send operations)'
+              : 'Advanced'
+          "
           class="q-mt-sm"
         >
           <div
@@ -112,28 +119,35 @@
             :key="`adv-${i}`"
           >
             <div class="col-12">
+              <p class="q-mt-sm q-mb-xs">
+                <span v-text="prop.label"></span>
+                <sup v-if="prop.info">
+                  <q-icon
+                    name="info"
+                    size="16px"
+                    class="q-ml-xs cursor-pointer"
+                  >
+                    <q-tooltip v-if="!prop.info_menu" max-width="300px">
+                      <span v-html="prop.info"></span>
+                    </q-tooltip>
+                    <q-menu v-else>
+                      <div class="q-pa-sm" style="max-width: 300px">
+                        <span v-html="prop.info"></span>
+                      </div>
+                    </q-menu>
+                  </q-icon>
+                </sup>
+              </p>
               <q-input
                 v-model="formData[key]"
                 filled
-                class="q-mt-sm"
                 :type="
                   prop.plaintext ? 'text' : hideInput ? 'password' : 'text'
                 "
-                :label="prop.label"
                 :hint="prop.hint"
                 :placeholder="placeholderOf(key, prop)"
                 :readonly="prop.readonly || false"
               >
-                <q-icon
-                  v-if="prop.info"
-                  name="info"
-                  size="16px"
-                  class="cursor-pointer q-ml-xs"
-                >
-                  <q-tooltip max-width="300px">
-                    <span v-html="prop.info"></span>
-                  </q-tooltip>
-                </q-icon>
                 <q-btn
                   v-if="prop.copy"
                   @click="utils.copyText(formData[key])"

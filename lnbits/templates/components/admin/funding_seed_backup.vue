@@ -1,5 +1,5 @@
 <template id="lnbits-admin-funding-seed-backup">
-  <q-dialog v-model="dialog.show">
+  <q-dialog v-model="dialog.show" @hide="onDialogHide">
     <q-card style="width: 760px; max-width: 95vw; border-radius: 8px">
       <q-card-section class="q-pb-md">
         <div class="row q-col-gutter-sm">
@@ -37,7 +37,11 @@
             ></div>
             <div
               class="text-caption text-grey-5"
-              v-text="'Write these words down in order.'"
+              v-text="
+                dialog.mode === 'remove'
+                  ? 'You are about to remove this seed from the server. Verify you have it backed up — without these words, access to its funds is lost.'
+                  : 'Write these words down in order.'
+              "
             ></div>
           </div>
           <q-btn
@@ -81,7 +85,8 @@
           </div>
         </div>
 
-        <div class="row justify-end q-mt-lg">
+        <div class="row justify-between q-mt-lg">
+          <q-btn flat no-caps label="Cancel" v-close-popup></q-btn>
           <q-btn
             color="primary"
             no-caps

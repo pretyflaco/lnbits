@@ -188,12 +188,12 @@ window.app.component('lnbits-admin-funding-sources', {
             blink_noncustodial_grant_privkey: {
               label: 'Delegated Receive Grant Key (optional)',
               hint: 'Hex private key authorized by the account owner for invoice requests. Receive-only: no spend authority. Enables LNURLp without a seed.',
-              advanced: true,
               info: 'Issued by the account owner by signing grant:{delegated_pubkey}:{expiry_secs} with the account identity key and registering it on the LNURL server. Receive-only: it cannot move funds.'
             },
             blink_noncustodial_breez_api_key: {
               label: 'Breez API Key (required with seed)',
               advanced: true,
+              info_menu: true,
               info: 'Client certificate issued by Breez for Spark SDK access. See <a href="https://sdk-doc-spark.breez.technology/#api-key" target="_blank" rel="noopener">the Breez Spark SDK docs</a> on how to obtain one.'
             }
           }
