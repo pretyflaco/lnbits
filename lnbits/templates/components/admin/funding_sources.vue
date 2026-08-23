@@ -48,12 +48,21 @@
               v-model="formData[key]"
               filled
               class="q-mt-sm"
-              :type="hideInput ? 'password' : 'text'"
-              :label="prop.label"
+              :type="prop.plaintext ? 'text' : hideInput ? 'password' : 'text'"
               :hint="prop.hint"
-              :value="prop.value"
+              :placeholder="placeholderOf(key, prop)"
               :readonly="prop.readonly || false"
             >
+              <template v-slot:label>
+                <span>{{ prop.label }}</span>
+                <sup v-if="prop.info">
+                  <q-icon name="info" size="16px" class="q-ml-xs">
+                    <q-tooltip max-width="300px">
+                      <span v-html="prop.info"></span>
+                    </q-tooltip>
+                  </q-icon>
+                </sup>
+              </template>
               <q-btn
                 v-if="prop.copy"
                 @click="utils.copyText(formData[key])"
@@ -106,11 +115,23 @@
                 v-model="formData[key]"
                 filled
                 class="q-mt-sm"
-                :type="hideInput ? 'password' : 'text'"
-                :label="prop.label"
+                :type="
+                  prop.plaintext ? 'text' : hideInput ? 'password' : 'text'
+                "
                 :hint="prop.hint"
+                :placeholder="placeholderOf(key, prop)"
                 :readonly="prop.readonly || false"
               >
+                <template v-slot:label>
+                  <span>{{ prop.label }}</span>
+                  <sup v-if="prop.info">
+                    <q-icon name="info" size="16px" class="q-ml-xs">
+                      <q-tooltip max-width="300px">
+                        <span v-html="prop.info"></span>
+                      </q-tooltip>
+                    </q-icon>
+                  </sup>
+                </template>
                 <q-btn
                   v-if="prop.copy"
                   @click="utils.copyText(formData[key])"

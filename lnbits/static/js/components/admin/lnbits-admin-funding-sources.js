@@ -11,6 +11,16 @@ window.app.component('lnbits-admin-funding-sources', {
     showQRValue(value) {
       this.qrValue = value
       this.showQRDialog = true
+    },
+    placeholderOf(key, prop) {
+      if (prop.dynamic_placeholder) return this.derivedLnurlEndpoint()
+      return prop.value || ''
+    },
+    derivedLnurlEndpoint() {
+      const domain = (this.formData.blink_noncustodial_ln_address || '').split(
+        '@'
+      )[1]
+      return 'https://' + (domain || '<domain of the lightning address>')
     }
   },
   computed: {
@@ -159,26 +169,32 @@ window.app.component('lnbits-admin-funding-sources', {
           {
             blink_noncustodial_ln_address: {
               label: 'Blink Lightning Address',
-              hint: 'Receive-only address, e.g. user@blink.sv. Add a Spark seed to enable sending.'
+              hint: 'Receive-only address, e.g. user@blink.sv. Add a Spark seed to enable sending.',
+              plaintext: true
             },
             blink_noncustodial_lnurl_endpoint: {
               label: 'LNURL Endpoint',
-              value: 'https://blink.sv',
-              advanced: true
+              advanced: true,
+              plaintext: true,
+              dynamic_placeholder: true,
+              info: 'Base URL of the LNURL-pay server that serves this Lightning Address. Leave empty to derive it from the address domain (e.g. https://blink.sv for user@blink.sv). Only set it if the LNURL server runs on a different domain than the address.'
             },
             blink_noncustodial_spark_mnemonic: {
-              label: 'Spark Seed Phrase (optional, enables send)',
+              label: 'Blink Seed Phrase (optional, enables send)',
               hint: 'Controls funds. Only add after backing it up.',
-              advanced: true
+              advanced: true,
+              info: 'The 12-word backup phrase of a Blink (self-custodial) account. Create a fresh account in the Blink mobile app and complete its backup to obtain one: Settings → Security &amp; Privacy → Backup phrase (biometric prompt, then the 12 words are shown). This phrase controls the account funds — never reuse the phrase of an account holding real funds.'
             },
             blink_noncustodial_grant_privkey: {
               label: 'Delegated Receive Grant Key (optional)',
               hint: 'Hex private key authorized by the account owner for invoice requests. Receive-only: no spend authority. Enables LNURLp without a seed.',
-              advanced: true
+              advanced: true,
+              info: 'Issued by the account owner by signing grant:{delegated_pubkey}:{expiry_secs} with the account identity key and registering it on the LNURL server. Receive-only: it cannot move funds.'
             },
             blink_noncustodial_breez_api_key: {
               label: 'Breez API Key (required with seed)',
-              advanced: true
+              advanced: true,
+              info: 'Client certificate issued by Breez for Spark SDK access. See <a href="https://sdk-doc-spark.breez.technology/#api-key" target="_blank" rel="noopener">the Breez Spark SDK docs</a> on how to obtain one.'
             }
           }
         ],
