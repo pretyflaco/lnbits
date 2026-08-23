@@ -49,20 +49,21 @@
               filled
               class="q-mt-sm"
               :type="prop.plaintext ? 'text' : hideInput ? 'password' : 'text'"
+              :label="prop.label"
               :hint="prop.hint"
               :placeholder="placeholderOf(key, prop)"
               :readonly="prop.readonly || false"
             >
-              <template v-slot:label>
-                <span v-text="prop.label"></span>
-                <sup v-if="prop.info">
-                  <q-icon name="info" size="16px" class="q-ml-xs">
-                    <q-tooltip max-width="300px">
-                      <span v-html="prop.info"></span>
-                    </q-tooltip>
-                  </q-icon>
-                </sup>
-              </template>
+              <q-icon
+                v-if="prop.info"
+                name="info"
+                size="16px"
+                class="cursor-pointer q-ml-xs"
+              >
+                <q-tooltip max-width="300px">
+                  <span v-html="prop.info"></span>
+                </q-tooltip>
+              </q-icon>
               <q-btn
                 v-if="prop.copy"
                 @click="utils.copyText(formData[key])"
@@ -118,20 +119,21 @@
                 :type="
                   prop.plaintext ? 'text' : hideInput ? 'password' : 'text'
                 "
+                :label="prop.label"
                 :hint="prop.hint"
                 :placeholder="placeholderOf(key, prop)"
                 :readonly="prop.readonly || false"
               >
-                <template v-slot:label>
-                  <span v-text="prop.label"></span>
-                  <sup v-if="prop.info">
-                    <q-icon name="info" size="16px" class="q-ml-xs">
-                      <q-tooltip max-width="300px">
-                        <span v-html="prop.info"></span>
-                      </q-tooltip>
-                    </q-icon>
-                  </sup>
-                </template>
+                <q-icon
+                  v-if="prop.info"
+                  name="info"
+                  size="16px"
+                  class="cursor-pointer q-ml-xs"
+                >
+                  <q-tooltip max-width="300px">
+                    <span v-html="prop.info"></span>
+                  </q-tooltip>
+                </q-icon>
                 <q-btn
                   v-if="prop.copy"
                   @click="utils.copyText(formData[key])"
