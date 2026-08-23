@@ -54,7 +54,7 @@
               :readonly="prop.readonly || false"
             >
               <template v-slot:label>
-                <span>{{ prop.label }}</span>
+                <span v-text="prop.label"></span>
                 <sup v-if="prop.info">
                   <q-icon name="info" size="16px" class="q-ml-xs">
                     <q-tooltip max-width="300px">
@@ -123,7 +123,7 @@
                 :readonly="prop.readonly || false"
               >
                 <template v-slot:label>
-                  <span>{{ prop.label }}</span>
+                  <span v-text="prop.label"></span>
                   <sup v-if="prop.info">
                     <q-icon name="info" size="16px" class="q-ml-xs">
                       <q-tooltip max-width="300px">
