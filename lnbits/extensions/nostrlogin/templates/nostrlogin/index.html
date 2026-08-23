@@ -6,54 +6,113 @@
 <div class="row q-col-gutter-md justify-center">
   <div class="col-12 col-md-8 col-lg-6">
     <q-card>
-      <q-card-section class="text-center">
-        <div class="text-h5">Sign in with Nostr</div>
-        <small>
-          Scan the QR code with your NIP-46 remote signer
-          (e.g. Amber, nsecBunker) to sign in.
+      <q-card-section>
+        <div class="text-h5">Nostr Login</div>
+        <small class="text-grey">
+          Link a Nostr key to this account so you can sign in with a remote
+          signer (NIP-46), such as Amber or a bunker.
         </small>
       </q-card-section>
 
-      <q-card-section v-if="connectUri" class="text-center">
-        <lnbits-qrcode :value="connectUri" :max-width="300"></lnbits-qrcode>
-        <q-input
-          readonly
-          filled
-          dense
-          type="textarea"
-          rows="3"
-          :model-value="connectUri"
-          label="NostrConnect URI"
-          class="q-mt-md"
-        >
-          <template v-slot:after>
-            <q-btn flat dense icon="content_copy" @click="copyUri"></q-btn>
+      <q-card-section>
+        <div v-if="linkedNpub">
+          <q-input
+            readonly
+            filled
+            dense
+            :model-value="linkedNpub"
+            label="Linked Nostr key"
+          >
+            <template v-slot:prepend>
+              <q-icon name="verified" color="positive"></q-icon>
+            </template>
+            <template v-slot:after>
+              <q-btn flat dense icon="content_copy" @click="copyNpub">
+                <q-tooltip>Copy npub</q-tooltip>
+              </q-btn>
+            </template>
+          </q-input>
+        </div>
+        <q-banner v-else class="bg-grey-2 text-grey-8 rounded-borders">
+          <template v-slot:avatar>
+            <q-icon name="link_off" color="grey-6"></q-icon>
           </template>
-        </q-input>
-        <q-btn
-          unelevated
-          color="primary"
-          icon="open_in_new"
-          label="Open signer app"
-          class="q-mt-md full-width"
-          :href="'nostrconnect://' + connectUri.split('nostrconnect://')[1] || connectUri"
-          type="a"
-        ></q-btn>
+          No Nostr key linked yet. Link one below to enable NostrConnect sign-in.
+        </q-banner>
+
+        <div class="row q-mt-md q-gutter-sm">
+          <q-btn
+            unelevated
+            color="primary"
+            :icon="linkedNpub ? 'sync' : 'link'"
+            :label="linkedNpub ? 'Replace key' : 'Link Nostr key'"
+            @click="startLinkSession"
+            :disable="linkStatus === 'pending'"
+          ></q-btn>
+          <q-btn
+            v-if="linkedNpub"
+            flat
+            color="negative"
+            icon="link_off"
+            label="Unlink"
+            @click="unlinkKey"
+          ></q-btn>
+          <q-space></q-space>
+          <lnbits-extension-settings-btn-dialog
+            v-if="isAdmin"
+            :options="settingsOptions"
+            :adminkey="adminKey"
+            endpoint="/nostrlogin/api/v1/admin/settings"
+          ></lnbits-extension-settings-btn-dialog>
+        </div>
+      </q-card-section>
+
+      <q-card-section v-if="linkUri" class="text-center">
+        <q-separator class="q-mb-md"></q-separator>
+        <div class="text-subtitle1 q-mb-sm">
+          Scan with your signer to link
+        </div>
+        <lnbits-qrcode :value="linkUri" :max-width="280"></lnbits-qrcode>
+        <div class="q-mt-sm">
+          <q-btn
+            flat
+            dense
+            no-caps
+            icon="content_copy"
+            label="Copy URI"
+            @click="copyLinkUri"
+          ></q-btn>
+          <q-btn
+            flat
+            dense
+            no-caps
+            icon="open_in_new"
+            label="Open signer app"
+            type="a"
+            :href="linkUri"
+          ></q-btn>
+        </div>
+        <div class="q-mt-sm">
+          <q-spinner-dots
+            v-if="linkStatus === 'pending'"
+            size="1.8rem"
+          ></q-spinner-dots>
+          <div
+            v-if="linkStatus === 'pending'"
+            class="text-grey q-mt-xs"
+          >
+            Waiting for approval in your signer…
+          </div>
+          <div v-if="linkStatus === 'failed'" class="text-negative q-mt-xs">
+            <span v-text="linkError || 'Linking failed. Please try again.'"></span>
+          </div>
+        </div>
       </q-card-section>
 
       <q-banner v-if="authUrl" class="bg-warning text-black q-ma-md">
         Your signer requires additional authentication.
         <a :href="authUrl" target="_blank" rel="noopener">Continue here</a>.
       </q-banner>
-
-      <q-card-section class="text-center">
-        <q-spinner-dots v-if="status === 'pending'" size="2rem"></q-spinner-dots>
-        <div v-if="statusText" v-text="statusText" class="q-mt-sm"></div>
-      </q-card-section>
-
-      <q-card-actions align="center">
-        <q-btn flat color="grey" label="Back" href="/"></q-btn>
-      </q-card-actions>
     </q-card>
   </div>
 </div>

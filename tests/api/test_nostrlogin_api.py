@@ -230,3 +230,30 @@ async def test_profile_sync_updates_account(http_client: AsyncClient, monkeypatc
     updated = await get_account(account.id)
     assert updated.extra.picture == "https://img.example.com/a.png"
     assert updated.extra.display_name == "Satoshi"
+
+
+@pytest.mark.anyio
+async def test_login_page_is_public(http_client: AsyncClient):
+    response = await http_client.get("/nostrlogin/login")
+    assert response.status_code == 200
+    assert "Sign in with Nostr" in response.text
+
+
+@pytest.mark.anyio
+async def test_manage_page_redirects_anonymous_to_login(http_client: AsyncClient):
+    http_client.cookies.clear()
+    response = await http_client.get("/nostrlogin/", follow_redirects=False)
+    assert response.status_code in (302, 307)
+    assert response.headers["location"] == "/nostrlogin/login"
+
+
+@pytest.mark.anyio
+async def test_connect_uri_includes_url_and_image(http_client: AsyncClient):
+    from lnbits.extensions.nostrlogin.views_api import _rate_limiter
+
+    _rate_limiter._attempts.clear()
+    response = await http_client.post("/nostrlogin/api/v1/session")
+    uri = response.json()["connect_uri"]
+    assert "url=http" in uri
+    assert "image=" in uri
+    assert "name=" in uri

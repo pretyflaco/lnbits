@@ -70,7 +70,7 @@ async def create_login_session(request: Request) -> JSONResponse:
         relays=ext_settings.relays,
         binding_nonce_hash=_binding_nonce_hash(binding_nonce),
         login_url=_request_base_url(request) + _NIP98_LOGIN_PATH,
-        app_name=settings.lnbits_site_title,
+        app_name=_signer_app_name(request),
         instance_url=_request_base_url(request),
         image_url=ext_settings.signer_app_image,
         diagnostic=ext_settings.enable_diagnostic_logging,
@@ -92,7 +92,7 @@ async def create_link_session(
         relays=ext_settings.relays,
         binding_nonce_hash=_binding_nonce_hash(binding_nonce),
         login_url=_request_base_url(request) + _NIP98_LOGIN_PATH,
-        app_name=settings.lnbits_site_title,
+        app_name=_signer_app_name(request),
         instance_url=_request_base_url(request),
         image_url=ext_settings.signer_app_image,
         diagnostic=ext_settings.enable_diagnostic_logging,
@@ -297,6 +297,25 @@ def _request_base_url(request: Request) -> str:
     scheme = request.url.scheme
     host = request.headers.get("host") or request.url.netloc
     return f"{scheme}://{host}"
+
+
+def _request_host(request: Request) -> str:
+    host = request.headers.get("host") or request.url.netloc
+    # strip a possible port for a cleaner display name
+    return host.split(":")[0]
+
+
+def _signer_app_name(request: Request) -> str:
+    """
+    Name advertised to the signer. Includes the instance host so signers that
+    only render the `name` (not the `url` param) still show which site is
+    requesting access.
+    """
+    title = settings.lnbits_site_title or "LNbits"
+    host = _request_host(request)
+    if host and host.lower() not in title.lower():
+        return f"{title} ({host})"
+    return title
 
 
 def _mint_login_response(account: Account, redirect: str = "/wallet") -> JSONResponse:

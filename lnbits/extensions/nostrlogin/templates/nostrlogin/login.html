@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block scripts %}
+<script src="{{ static_url_for('nostrlogin/static', path='js/login.js') }}"></script>
+<script>
+  window.nostrloginAlreadySignedIn = {{ 'true' if already_signed_in else 'false' }}
+</script>
+{% endblock %}
+{% block page %}
+<div class="row q-col-gutter-md justify-center">
+  <div class="col-12 col-md-8 col-lg-6">
+    <q-card>
+      <q-card-section class="text-center">
+        <div class="text-h5">Sign in with Nostr</div>
+        <small>
+          Scan the QR code with your NIP-46 remote signer (e.g. Amber,
+          nsecBunker) to sign in.
+        </small>
+      </q-card-section>
+
+      <q-banner
+        v-if="alreadySignedIn"
+        class="bg-blue-1 text-blue-9 q-ma-md rounded-borders"
+      >
+        You are already signed in.
+        <a href="/wallet" class="text-primary">Go to your wallet</a>
+        or
+        <a href="/nostrlogin/" class="text-primary">manage your Nostr keys</a>.
+      </q-banner>
+
+      <q-card-section v-if="connectUri" class="text-center">
+        <lnbits-qrcode :value="connectUri" :max-width="280"></lnbits-qrcode>
+        <q-input
+          readonly
+          filled
+          dense
+          type="textarea"
+          rows="3"
+          :model-value="connectUri"
+          label="NostrConnect URI"
+          class="q-mt-md"
+        >
+          <template v-slot:after>
+            <q-btn flat dense icon="content_copy" @click="copyUri"></q-btn>
+          </template>
+        </q-input>
+        <q-btn
+          unelevated
+          color="primary"
+          icon="open_in_new"
+          label="Open signer app"
+          class="q-mt-md full-width"
+          :href="connectUri"
+          type="a"
+        ></q-btn>
+      </q-card-section>
+
+      <q-banner v-if="authUrl" class="bg-warning text-black q-ma-md">
+        Your signer requires additional authentication.
+        <a :href="authUrl" target="_blank" rel="noopener">Continue here</a>.
+      </q-banner>
+
+      <q-card-section class="text-center">
+        <q-spinner-dots
+          v-if="status === 'pending'"
+          size="2rem"
+        ></q-spinner-dots>
+        <div v-if="status === 'pending'" class="q-mt-sm text-grey">
+          Waiting for approval… approve the request in your signer app.
+        </div>
+
+        <q-banner
+          v-if="status === 'failed'"
+          class="bg-red-1 text-red-9 rounded-borders q-mt-sm text-left"
+        >
+          <div v-text="failureText"></div>
+          <div v-if="failureNeedsLink" class="q-mt-sm">
+            If this is your account, sign in the normal way first, then
+            <a href="/nostrlogin/" class="text-primary">link your Nostr key</a>.
+          </div>
+          <template v-slot:action>
+            <q-btn flat color="red-9" label="Try again" @click="retry"></q-btn>
+          </template>
+        </q-banner>
+      </q-card-section>
+
+      <q-card-actions align="center">
+        <q-btn flat color="grey" label="Back" href="/"></q-btn>
+      </q-card-actions>
+    </q-card>
+  </div>
+</div>
+{% endblock %}

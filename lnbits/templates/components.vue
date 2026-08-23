@@ -1018,7 +1018,7 @@ include('components/lnbits-error.vue') %}
       </q-btn>
       <q-btn
         v-if="g.settings.extensions.includes('nostrlogin')"
-        href="/nostrlogin"
+        href="/nostrlogin/login"
         type="a"
         outline
         no-caps
