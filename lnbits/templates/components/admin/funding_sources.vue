@@ -44,21 +44,17 @@
           :key="i"
         >
           <div class="col-12">
-            <p class="q-mt-sm q-mb-xs">
-              <span v-text="prop.label"></span>
+            <div class="q-mt-sm q-mb-xs">
+              <span v-if="prop.labelHtml" v-html="prop.labelHtml"></span>
+              <span v-else v-text="prop.label"></span>
               <sup v-if="prop.info">
-                <q-icon name="info" size="16px" class="q-ml-xs cursor-pointer">
-                  <q-tooltip v-if="!prop.info_menu" max-width="300px">
+                <q-icon name="info" size="16px" class="q-ml-xs">
+                  <q-tooltip max-width="300px">
                     <span v-html="prop.info"></span>
                   </q-tooltip>
-                  <q-menu v-else>
-                    <div class="q-pa-sm" style="max-width: 300px">
-                      <span v-html="prop.info"></span>
-                    </div>
-                  </q-menu>
                 </q-icon>
               </sup>
-            </p>
+            </div>
             <q-input
               v-model="formData[key]"
               filled
@@ -119,25 +115,17 @@
             :key="`adv-${i}`"
           >
             <div class="col-12">
-              <p class="q-mt-sm q-mb-xs">
-                <span v-text="prop.label"></span>
+              <div class="q-mt-sm q-mb-xs">
+                <span v-if="prop.labelHtml" v-html="prop.labelHtml"></span>
+                <span v-else v-text="prop.label"></span>
                 <sup v-if="prop.info">
-                  <q-icon
-                    name="info"
-                    size="16px"
-                    class="q-ml-xs cursor-pointer"
-                  >
-                    <q-tooltip v-if="!prop.info_menu" max-width="300px">
+                  <q-icon name="info" size="16px" class="q-ml-xs">
+                    <q-tooltip max-width="300px">
                       <span v-html="prop.info"></span>
                     </q-tooltip>
-                    <q-menu v-else>
-                      <div class="q-pa-sm" style="max-width: 300px">
-                        <span v-html="prop.info"></span>
-                      </div>
-                    </q-menu>
                   </q-icon>
                 </sup>
-              </p>
+              </div>
               <q-input
                 v-model="formData[key]"
                 filled
