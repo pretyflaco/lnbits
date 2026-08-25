@@ -8,6 +8,13 @@ import pytest
 from lnbits.settings import settings
 from lnbits.wallets.blink_noncustodial import (
     BlinkNonCustodialWallet,
+    GrantKeySigner,
+    InvoiceSigner,
+    NoSendCapability,
+    PendingInvoiceTracker,
+    SignedInvoiceMinter,
+    SparkSdkAdapter,
+    SparkSdkSigner,
     _InvoiceMeta,
 )
 
@@ -670,3 +677,158 @@ async def test_duplicate_payment_hash_registered_once(monkeypatch, mocker, tmp_p
         response = await _create_one_invoice(wallet, mocker, payment_hash)
         assert response.ok is True
     assert wallet.pending_invoices.count(payment_hash) == 1
+
+
+# --- SOLID seams: signers, send capability, adapter, minter, tracker ---
+
+GRANT_PRIVKEY = "11" * 32  # deterministic 32-byte key for tests
+
+
+def test_grant_key_signer_satisfies_signer_port():
+    signer = GrantKeySigner(GRANT_PRIVKEY)
+    assert isinstance(signer, InvoiceSigner)
+    assert signer.pubkey  # compressed pubkey exposed at construction
+
+
+@pytest.mark.anyio
+async def test_grant_key_signer_signs_sha256_der():
+    signer = GrantKeySigner(GRANT_PRIVKEY)
+    sig = await signer.sign_invoice_request("grant:abc:123-456")
+    assert isinstance(sig, str) and sig
+    # coincurve ECDSA, no SDK involved
+    assert sig != signer.pubkey
+
+
+@pytest.mark.anyio
+async def test_spark_sdk_signer_delegates_to_adapter(monkeypatch):
+    class FakeAdapter:
+        async def sign_message(self, message):
+            assert message.endswith("-789")
+            return "02ab", "sig-hex"
+
+    signer = SparkSdkSigner(FakeAdapter())
+    sig = await signer.sign_invoice_request("lnurl-invoice-v1:d:u:1:h:0:rid-789")
+    assert sig == "sig-hex"
+    assert signer.pubkey == "02ab"  # pubkey resolved at sign time
+
+
+@pytest.mark.anyio
+async def test_no_send_capability_refuses_send_and_reports_zero():
+    cap = NoSendCapability()
+    response = await cap.pay("lnbc...", "a" * 64, 1000)
+    assert response.ok is False
+    assert "not supported" in (response.error_message or "").lower()
+    status = await cap.status()
+    assert status.balance_msat == 0
+    payment_status = await cap.payment_status("a" * 64)
+    assert payment_status.paid is not True
+
+
+def test_spark_adapter_payment_info_contains_duck_typing():
+    # status enum with .name, htlc details, fees as int, id, 0x-prefixed hash
+    payment = SimpleNamespace(
+        status=SimpleNamespace(name="COMPLETED"),
+        details=SimpleNamespace(
+            htlc_details=SimpleNamespace(
+                preimage="ab" * 32, payment_hash="0x" + "cc" * 32
+            )
+        ),
+        fees=2500,
+        id="sdk-id-1",
+    )
+    info = SparkSdkAdapter._payment_info(payment)
+    assert info.status is True
+    assert info.preimage == "ab" * 32
+    assert info.fee_msat == 2500
+    assert info.sdk_payment_id == "sdk-id-1"
+    assert info.htlc_hash == "cc" * 32  # 0x prefix stripped
+
+
+def test_spark_adapter_payment_info_handles_none_and_missing_fields():
+    info = SparkSdkAdapter._payment_info(None)
+    assert info.status is None and info.preimage is None and info.fee_msat is None
+    # fees_sat fallback when `fees` absent
+    payment = SimpleNamespace(
+        status=SimpleNamespace(name="FAILED"),
+        details=None,
+        fees=None,
+        fees_sat=3,
+        id=None,
+    )
+    info2 = SparkSdkAdapter._payment_info(payment)
+    assert info2.status is False
+    assert info2.fee_msat == 3000
+
+
+@pytest.mark.anyio
+async def test_signed_invoice_minter_builds_canonical_and_signs(
+    monkeypatch, mocker, tmp_path
+):
+    from lnbits.wallets.blink_noncustodial import LnUrlPayClient
+
+    captured = {}
+
+    class FakeSigner:
+        pubkey = "02deadbeef"
+
+        async def sign_invoice_request(self, message):
+            captured["message"] = message
+            return "sig"
+
+    client = mocker.Mock()
+    lnurl = LnUrlPayClient(client, "https://blink.sv", "hanzy", "blink.sv")
+    minter = SignedInvoiceMinter(
+        client, "https://blink.sv", "hanzy", "blink.sv", FakeSigner(), lnurl
+    )
+
+    async def fake_post(url, json=None):
+        captured["url"] = url
+        captured["body"] = json
+        return mock_http_response({"pr": "lnbc...", "verify": "https://blink.sv/v/a"})
+
+    mocker.patch.object(client, "post", side_effect=fake_post)
+    desc_hash = "aa" * 32
+    result = await minter.mint(5, bytes.fromhex(desc_hash), None, 3600)
+    assert not isinstance(result, type(None))
+    data, desc_hex, amount_msat = result
+    assert isinstance(data, dict)
+    assert desc_hex == desc_hash
+    assert amount_msat == 5000
+    # canonical message binds domain/identifier/amount/hash/expiry + timestamp
+    assert captured["message"].startswith(
+        "lnurl-invoice-v1:blink.sv:hanzy:5000:" + desc_hash + ":3600:"
+    )
+    assert captured["body"]["signature"] == "sig"
+    assert captured["body"]["pubkey"] == "02deadbeef"
+    assert captured["body"]["description_hash"] == desc_hash
+
+
+def test_pending_tracker_register_persist_evict(tmp_path):
+    store = tmp_path / "pending.json"
+    tracker = PendingInvoiceTracker(store)
+    tracker.register("h1", "https://d/v/h1", expires_at=0)
+    assert "h1" in tracker.pending_invoices
+    assert tracker.verify_url_for("h1") == "https://d/v/h1"
+
+    reloaded = PendingInvoiceTracker(store)
+    assert "h1" in reloaded.pending_invoices
+
+    reloaded.evict("h1", "paid")
+    assert "h1" not in reloaded.pending_invoices
+    assert PendingInvoiceTracker(store).pending_invoices == []
+
+
+def test_pending_tracker_error_streak_eviction(tmp_path):
+    tracker = PendingInvoiceTracker(tmp_path / "pending.json")
+    for _ in range(2):
+        status = tracker.register_error("h2", "not found", hard=True)
+        assert status.paid is not True and not status.failed
+    status = tracker.register_error("h2", "not found", hard=True)
+    assert status.failed  # 3rd consecutive hard error evicts
+
+
+def test_pending_tracker_soft_errors_never_evict(tmp_path):
+    tracker = PendingInvoiceTracker(tmp_path / "pending.json")
+    for _ in range(6):
+        status = tracker.register_error("h3", "transport error", hard=False)
+        assert not status.failed
