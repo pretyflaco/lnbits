@@ -1,5 +1,6 @@
 import hashlib
 import os
+import sys
 import time
 from types import SimpleNamespace
 
@@ -758,6 +759,92 @@ def test_spark_adapter_payment_info_handles_none_and_missing_fields():
     info2 = SparkSdkAdapter._payment_info(payment)
     assert info2.status is False
     assert info2.fee_msat == 3000
+
+
+def _fake_sdk_module(monkeypatch):
+    """Inject a stand-in for breez_sdk_spark (not installed in test venv)."""
+
+    class ListPaymentsRequest:
+        pass
+
+    fake = SimpleNamespace(ListPaymentsRequest=ListPaymentsRequest)
+    monkeypatch.setitem(sys.modules, "breez_sdk_spark", fake)
+
+
+def _spark_payment(payment_hash, preimage="ab" * 32, status_name="COMPLETED"):
+    return SimpleNamespace(
+        status=SimpleNamespace(name=status_name),
+        details=SimpleNamespace(
+            htlc_details=SimpleNamespace(preimage=preimage, payment_hash=payment_hash)
+        ),
+        fees=1000,
+        id="sdk-id",
+    )
+
+
+@pytest.mark.anyio
+async def test_find_payment_matches_within_response_wrapper(monkeypatch, tmp_path):
+    # Regression: the real SDK returns a ListPaymentsResponse wrapper record,
+    # not a bare list; find_payment must read its .payments field.
+    _fake_sdk_module(monkeypatch)
+    target = _spark_payment("c" * 64)
+    other = _spark_payment("d" * 64)
+
+    class FakeSdk:
+        async def list_payments(self, _request):
+            return SimpleNamespace(payments=[other, target])
+
+    adapter = SparkSdkAdapter("mnemonic", None, str(tmp_path))
+    adapter._sdk = FakeSdk()
+    info = await adapter.find_payment("c" * 64)
+    assert info is not None
+    assert info.htlc_hash == "c" * 64
+    assert info.status is True
+    assert info.preimage == "ab" * 32
+
+
+@pytest.mark.anyio
+async def test_find_payment_none_when_hash_absent(monkeypatch, tmp_path):
+    _fake_sdk_module(monkeypatch)
+
+    class FakeSdk:
+        async def list_payments(self, _request):
+            return SimpleNamespace(payments=[_spark_payment("d" * 64)])
+
+    adapter = SparkSdkAdapter("mnemonic", None, str(tmp_path))
+    adapter._sdk = FakeSdk()
+    assert await adapter.find_payment("c" * 64) is None
+
+
+@pytest.mark.anyio
+async def test_find_payment_maps_failed_status(monkeypatch, tmp_path):
+    # a failed payment must surface as paid=False so callers can break
+    # wait loops (NWC pay_invoice polls via payment_status until terminal)
+    _fake_sdk_module(monkeypatch)
+
+    class FakeSdk:
+        async def list_payments(self, _request):
+            failed = _spark_payment("c" * 64, preimage=None, status_name="FAILED")
+            return SimpleNamespace(payments=[failed])
+
+    adapter = SparkSdkAdapter("mnemonic", None, str(tmp_path))
+    adapter._sdk = FakeSdk()
+    info = await adapter.find_payment("c" * 64)
+    assert info is not None
+    assert info.status is False
+
+
+@pytest.mark.anyio
+async def test_find_payment_tolerates_missing_payments_field(monkeypatch, tmp_path):
+    _fake_sdk_module(monkeypatch)
+
+    class FakeSdk:
+        async def list_payments(self, _request):
+            return SimpleNamespace()  # no .payments attribute
+
+    adapter = SparkSdkAdapter("mnemonic", None, str(tmp_path))
+    adapter._sdk = FakeSdk()
+    assert await adapter.find_payment("c" * 64) is None
 
 
 @pytest.mark.anyio

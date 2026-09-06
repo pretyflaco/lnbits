@@ -256,11 +256,12 @@ class SparkSdkAdapter:
         import breez_sdk_spark  # type: ignore[reportMissingImports]
 
         try:
-            payments = await sdk.list_payments(breez_sdk_spark.ListPaymentsRequest())
+            response = await sdk.list_payments(breez_sdk_spark.ListPaymentsRequest())
         except Exception as exc:
             logger.warning(f"could not list spark payments: {exc}")
             return None
-        for payment in payments:
+        # list_payments returns a ListPaymentsResponse wrapper, not a list
+        for payment in getattr(response, "payments", None) or []:
             info = self._payment_info(payment)
             if info.htlc_hash == checking_id:
                 return info
