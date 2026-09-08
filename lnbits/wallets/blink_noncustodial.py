@@ -149,6 +149,29 @@ class SparkSdkAdapter:
         self._data_folder = data_folder
         self._sdk: Any = None
         self._lock = asyncio.Lock()
+        self._last_status_sync = 0.0
+
+    async def sync_if_stale(self, min_interval_secs: float = 10.0) -> None:
+        """Refresh the SDK's local payment cache if the last refresh is older
+        than `min_interval_secs`.
+
+        `list_payments` (used by outgoing-status checks) reads the local
+        storage, which can lag the Spark network by minutes; without this
+        sync, completed sends stay `pending` in the LNbits database until the
+        SDK's next background sync happens to land between two polls.
+        Failures are non-fatal: the caller falls back to the cached view.
+        """
+        now = time.monotonic()
+        if now - self._last_status_sync < min_interval_secs:
+            return
+        self._last_status_sync = now
+        try:
+            import breez_sdk_spark  # type: ignore[reportMissingImports]
+
+            sdk = await self.ensure()
+            await sdk.sync_wallet(breez_sdk_spark.SyncWalletRequest())
+        except Exception as exc:  # status checks must not raise
+            logger.debug(f"Spark pre-status sync failed: {exc}")
 
     @staticmethod
     def _require_package() -> None:
@@ -411,6 +434,7 @@ class SparkSendCapability:
         )
 
     async def payment_status(self, checking_id: str) -> PaymentStatus:
+        await self._sdk.sync_if_stale()
         try:
             info = await self._sdk.find_payment(checking_id)
         except Exception as exc:
