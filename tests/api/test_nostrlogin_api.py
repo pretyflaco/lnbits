@@ -13,6 +13,52 @@ from lnbits.core.services import create_user_account
 from lnbits.utils.nostr import sign_event
 
 
+@pytest.fixture(scope="session")
+async def app(settings):
+    """App with the in-tree nostrlogin extension registered.
+
+    The test conftest sets lnbits_extensions_deactivate_all=True, so app
+    startup skips check_and_register_extensions() and extension routes are
+    never mounted. Build the app here and register nostrlogin explicitly.
+    """
+    from asgi_lifespan import LifespanManager
+    from fastapi import FastAPI
+
+    from lnbits.app import create_app, register_ext_routes
+    from lnbits.core.crud.db_versions import get_db_version
+    from lnbits.core.helpers import migrate_extension_database
+    from lnbits.core.models.extensions import Extension, InstallableExtension
+    from lnbits.core.models.users import UpdateSuperuserPassword
+    from lnbits.core.views.auth_api import first_install
+
+    fastapi_app: FastAPI = create_app()
+    async with LifespanManager(fastapi_app, startup_timeout=30) as manager:
+        settings.first_install = True
+        await first_install(
+            UpdateSuperuserPassword(
+                username="superadmin",
+                password="secret1234",
+                password_repeat="secret1234",
+                first_install_token=settings.first_install_token,
+            )
+        )
+        ext_info = InstallableExtension.from_ext_dir("nostrlogin")
+        assert ext_info, "nostrlogin extension dir not found"
+        current_version = await get_db_version(ext_info.id)
+        await migrate_extension_database(ext_info, current_version)
+        register_ext_routes(fastapi_app, Extension.from_installable_ext(ext_info))
+        yield manager.app
+
+
+@pytest.fixture(scope="session")
+async def http_client(app, settings):
+    from httpx import ASGITransport, AsyncClient
+
+    url = f"http://{settings.host}:{settings.port}"
+    async with AsyncClient(transport=ASGITransport(app=app), base_url=url) as client:
+        yield client
+
+
 def _nip98_event(method: str = "POST", url: str | None = None) -> tuple[dict, str]:
     private_key = PrivateKey(os.urandom(32))
     pubkey_hex = private_key.public_key.format().hex()[2:]
