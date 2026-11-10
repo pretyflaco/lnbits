@@ -6,12 +6,15 @@ window.app.component('lnbits-admin-funding-seed-backup', {
       dialog: {
         show: false,
         step: 1,
+        mode: 'add',
+        completed: false,
         seed: '',
         visible: false,
         challenge: [],
         answers: {},
         error: '',
-        confirmField: ''
+        confirmField: '',
+        seedField: ''
       }
     }
   },
@@ -22,6 +25,8 @@ window.app.component('lnbits-admin-funding-seed-backup', {
       }
     },
     'formData.lnbits_backend_wallet_class'(walletClass, previousWalletClass) {
+      // Blink handles its own dialog triggers in the seed-field watcher
+      if (walletClass === 'BlinkNonCustodialWallet') return
       const source = this.seedBackupSource(walletClass)
       if (previousWalletClass && source && this.formData[source.seedField]) {
         this.formData[source.confirmField] = false
@@ -48,6 +53,9 @@ window.app.component('lnbits-admin-funding-seed-backup', {
           ? this.settings.spark_l2_mnemonic_backup_confirmed
           : false
       this.openIfRequired()
+    },
+    'formData.blink_noncustodial_spark_mnemonic'() {
+      this.onBlinkSeedChange()
     }
   },
   computed: {
@@ -81,9 +89,21 @@ window.app.component('lnbits-admin-funding-seed-backup', {
           confirmField: 'spark_l2_mnemonic_backup_confirmed'
         }
       }
+      if (walletClass === 'BlinkNonCustodialWallet') {
+        return {
+          seedField: 'blink_noncustodial_spark_mnemonic',
+          confirmField: 'blink_noncustodial_mnemonic_backup_confirmed'
+        }
+      }
     },
     openIfRequired() {
       if (!this.active || !this.isSuperUser) return
+      // Blink: no popup on navigation; the dialog is guarded by the
+      // seed-field watcher instead (see onBlinkSeedChange)
+      if (
+        this.formData.lnbits_backend_wallet_class === 'BlinkNonCustodialWallet'
+      )
+        return
 
       const source = this.seedBackupSource()
       if (!source) return
@@ -95,13 +115,53 @@ window.app.component('lnbits-admin-funding-seed-backup', {
       this.dialog = {
         show: true,
         step: 1,
+        mode: 'add',
+        completed: false,
         seed,
         visible: false,
         challenge: [],
         answers: {},
         error: '',
-        confirmField: source.confirmField
+        confirmField: source.confirmField,
+        seedField: ''
       }
+    },
+    onBlinkSeedChange() {
+      const seedField = 'blink_noncustodial_spark_mnemonic'
+      const confirmField = 'blink_noncustodial_mnemonic_backup_confirmed'
+      if (this.dialog.show) return
+
+      const stored = (this.settings[seedField] || '').trim()
+      const current = (this.formData[seedField] || '').trim()
+
+      if (current === stored) {
+        // untouched: keep the persisted confirmation state
+        this.formData[confirmField] = this.settings[confirmField]
+        return
+      }
+      this.formData[confirmField] = false
+      if (!current && !stored) return
+
+      this.dialog = {
+        show: true,
+        step: 1,
+        mode: current ? 'add' : 'remove',
+        completed: false,
+        seed: current || stored,
+        visible: false,
+        challenge: [],
+        answers: {},
+        error: '',
+        confirmField,
+        seedField
+      }
+    },
+    onDialogHide() {
+      // dialog dismissed without completing verification: revert the
+      // field to the saved value so nothing is applied or wiped
+      if (this.dialog.completed || !this.dialog.seedField) return
+      this.formData[this.dialog.seedField] =
+        this.settings[this.dialog.seedField]
     },
     prepareChallenge() {
       const words = this.dialog.seed.split(/\s+/).filter(Boolean)
@@ -136,6 +196,7 @@ window.app.component('lnbits-admin-funding-seed-backup', {
           }
         )
         .then(() => {
+          this.dialog.completed = true
           this.formData[field] = true
           this.settings[field] = true
           this.dialog.show = false

@@ -45,16 +45,26 @@
           :key="i"
         >
           <div class="col-12">
+            <div class="q-mt-sm q-mb-xs">
+              <span v-if="prop.labelHtml" v-html="prop.labelHtml"></span>
+              <span v-else v-text="prop.label"></span>
+              <sup v-if="prop.info">
+                <q-icon name="info" size="16px" class="q-ml-xs">
+                  <q-tooltip max-width="300px">
+                    <span v-html="prop.info"></span>
+                  </q-tooltip>
+                </q-icon>
+              </sup>
+            </div>
             <q-input
               dense
               v-model="formData[key]"
               filled
               class="q-mt-sm"
-              :type="hideInput ? 'password' : 'text'"
+              :type="prop.plaintext ? 'text' : hideInput ? 'password' : 'text'"
               autocomplete="off"
-              :label="prop.label"
               :hint="prop.hint"
-              :value="prop.value"
+              :placeholder="placeholderOf(key, prop)"
               :readonly="prop.readonly || false"
             >
               <q-btn
@@ -94,7 +104,11 @@
           dense
           expand-separator
           icon="tune"
-          label="Advanced"
+          :label="
+            fund === 'BlinkNonCustodialWallet'
+              ? 'Advanced (send operations)'
+              : 'Advanced'
+          "
           class="q-mt-sm"
         >
           <div
@@ -105,15 +119,28 @@
             :key="`adv-${i}`"
           >
             <div class="col-12">
+              <div class="q-mt-sm q-mb-xs">
+                <span v-if="prop.labelHtml" v-html="prop.labelHtml"></span>
+                <span v-else v-text="prop.label"></span>
+                <sup v-if="prop.info">
+                  <q-icon name="info" size="16px" class="q-ml-xs">
+                    <q-tooltip max-width="300px">
+                      <span v-html="prop.info"></span>
+                    </q-tooltip>
+                  </q-icon>
+                </sup>
+              </div>
               <q-input
                 dense
                 v-model="formData[key]"
                 filled
                 class="q-mt-sm"
-                :type="hideInput ? 'password' : 'text'"
+                :type="
+                  prop.plaintext ? 'text' : hideInput ? 'password' : 'text'
+                "
                 autocomplete="off"
-                :label="prop.label"
                 :hint="prop.hint"
+                :placeholder="placeholderOf(key, prop)"
                 :readonly="prop.readonly || false"
               >
                 <q-btn

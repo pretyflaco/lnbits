@@ -66,7 +66,8 @@ lnbits-cli = "lnbits.commands:main"
 
 [project.optional-dependencies]
 breez = ["breez-sdk~=0.8.0", "breez-sdk-liquid~=0.11.11"]
-liquid = ["boltz-client==0.4.0"]
+blink-spark = ["breez-sdk-spark==0.22.0"]
+liquid = ["wallycore~=1.5.1", "boltz-client==0.4.0"]
 migration = ["psycopg2-binary~=2.9.11"]
 
 [dependency-groups]
@@ -175,6 +176,7 @@ module = [
   "filetype.*",
   "breez_sdk.*",
   "breez_sdk_liquid.*",
+  "breez_sdk_spark.*",
 ]
 ignore_missing_imports = "True"
 
