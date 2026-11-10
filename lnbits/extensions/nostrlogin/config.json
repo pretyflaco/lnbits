@@ -1,0 +1,8 @@
+{
+  "name": "Nostr Login",
+  "short_description": "Sign in to LNbits with a remote Nostr signer (NIP-46)",
+  "tile": "/nostrlogin/static/image/nostrlogin.png",
+  "version": "0.1.0",
+  "min_lnbits_version": "1.0.0",
+  "license": "MIT"
+}
